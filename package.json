@@ -1,0 +1,32 @@
+{
+  "name": "rle",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node -e \"try{require('fs').rmSync('.next/dev/lock',{force:true})}catch(e){}\" && next dev --port 3000",
+    "dev:clean": "node scripts/dev-clean.js",
+    "dev:fresh": "npm run clean && next dev",
+    "clean": "taskkill /F /IM node.exe >nul 2>&1 & if exist .next\\dev\\lock del /F .next\\dev\\lock & echo Limpieza completa",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.0",
+    "next": "16.1.6",
+    "openai": "^6.22.0",
+    "pg": "^8.20.0",
+    "playwright": "^1.58.2",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4"
+  }
+}
