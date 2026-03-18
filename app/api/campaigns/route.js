@@ -28,11 +28,13 @@ export async function POST(request) {
         }
 
         const db = await getDb();
+        const campaignId = crypto.randomUUID().replace(/-/g, "").substring(0, 32);
         
         await db.execute({
-            sql: `INSERT INTO campaigns (name, niche, target_source, daily_limit, niche_context, search_keyword)
-                  VALUES (?, ?, ?, ?, ?, ?)`,
+            sql: `INSERT INTO campaigns (id, name, niche, target_source, daily_limit, niche_context, search_keyword)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
             args: [
+                campaignId,
                 name, 
                 niche || "", 
                 target_source || "", 
