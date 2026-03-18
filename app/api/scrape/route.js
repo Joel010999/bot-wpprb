@@ -50,7 +50,7 @@ export async function POST(request) {
 }
 
 async function runScrapeJob(jobId, targetUrl, filters, campaignId) {
-    const db = getDb();
+    const db = await getDb();
 
     try {
         const { createBotSession, saveSession } = await import("@/lib/fleet");

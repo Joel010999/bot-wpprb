@@ -80,7 +80,7 @@ export async function PUT(request) {
 }
 
 async function triggerCampaignAction(campaignId) {
-    const db = getDb();
+    const db = await getDb();
     console.log(`[CAMPAIGN TRIGGER] Lanzando campaña ${campaignId}...`);
 
     try {
