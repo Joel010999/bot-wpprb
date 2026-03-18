@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 
 export async function GET() {
     try {
-        const db = getDb();
+        const db = await getDb();
         const result = await db.execute(`
             SELECT * FROM scrape_jobs ORDER BY created_at DESC
         `);
@@ -23,7 +23,7 @@ export async function POST(request) {
             return NextResponse.json({ error: "URL objetivo es obligatoria" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
 
         // Registrar el job en la DB
         const jobId = crypto.randomUUID().replace(/-/g, "").substring(0, 32);

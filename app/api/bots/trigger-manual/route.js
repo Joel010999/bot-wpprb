@@ -47,7 +47,7 @@ export async function POST(req) {
 
                 // 1. OBTENER UN BOT ACTIVO DE LA FLOTA
                 log("Buscando un bot de Playwright activo...");
-                const db = getDb();
+                const db = await getDb();
                 const botQuery = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' ORDER BY RANDOM() LIMIT 1");
                 
                 if (botQuery.rows.length === 0) {

@@ -11,7 +11,7 @@ export async function POST(request) {
             return NextResponse.json({ error: "lead_id es obligatorio" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
         const leadRes = await db.execute({
             sql: "SELECT * FROM leads WHERE id = ?",
             args: [lead_id]

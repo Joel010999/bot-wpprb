@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     try {
-        const db = getDb();
+        const db = await getDb();
 
         const [totalLeads, contactedLeads, botsActive] = await Promise.all([
             db.execute("SELECT COUNT(*) as count FROM leads"),

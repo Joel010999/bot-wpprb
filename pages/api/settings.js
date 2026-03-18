@@ -4,7 +4,7 @@ import { resetClient } from "@/lib/openai";
 export default async function handler(req, res) {
     if (req.method === "GET") {
         try {
-            const db = getDb();
+            const db = await getDb();
             const result = await db.execute("SELECT key, value FROM settings");
             
             const settings = {};
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
         try {
             const data = req.body;
-            const db = getDb();
+            const db = await getDb();
 
             for (const [key, value] of Object.entries(data)) {
                 const stringValue = typeof value === 'boolean' ? value.toString() : String(value || "");

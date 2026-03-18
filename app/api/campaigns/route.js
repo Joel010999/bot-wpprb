@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 
 export async function GET() {
     try {
-        const db = getDb();
+        const db = await getDb();
         const result = await db.execute(`
             SELECT c.*, 
                    (SELECT COUNT(*) FROM prospects WHERE campaign_id = c.id AND status = 'pendiente') AS pending_count 
@@ -27,7 +27,7 @@ export async function POST(request) {
             return NextResponse.json({ error: "El nombre de la campaña es obligatorio" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
         
         await db.execute({
             sql: `INSERT INTO campaigns (name, niche, target_source, daily_limit, niche_context, search_keyword)
@@ -58,7 +58,7 @@ export async function PUT(request) {
             return NextResponse.json({ error: "ID y status son obligatorios" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
         
         await db.execute({
             sql: `UPDATE campaigns SET status = ? WHERE id = ?`,

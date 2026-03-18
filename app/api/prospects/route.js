@@ -8,7 +8,7 @@ export async function GET(request) {
         const statusStr = searchParams.get("status");
         const limit = parseInt(searchParams.get("limit") || "100");
 
-        const db = getDb();
+        const db = await getDb();
 
         if (type === "leads") {
             // Lógica de Bandeja/Leads
@@ -58,7 +58,7 @@ export async function POST(request) {
         const cleanUsername = username.replace(/^@/, "").trim().toLowerCase();
         const initialStatus = status || 'pendiente';
 
-        const db = getDb();
+        const db = await getDb();
         
         await db.execute({
             sql: `INSERT INTO prospects (username, full_name, biography, status)
@@ -82,7 +82,7 @@ export async function PATCH(request) {
         const body = await request.json();
         const { lead_id, prospect_id, automation_paused, status } = body;
 
-        const db = getDb();
+        const db = await getDb();
 
         if (lead_id) {
             // Actualizar Lead

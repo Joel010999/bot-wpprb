@@ -10,7 +10,7 @@ export async function GET(request) {
             return NextResponse.json({ error: "lead_id es obligatorio" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
         const result = await db.execute({
             sql: "SELECT * FROM messages WHERE lead_id = ? ORDER BY sent_at ASC",
             args: [leadId]
@@ -32,7 +32,7 @@ export async function POST(request) {
             return NextResponse.json({ error: "Faltan campos obligatorios" }, { status: 400 });
         }
 
-        const db = getDb();
+        const db = await getDb();
         
         // Si no se provee bot_account_id, intentar buscar el último usado para este lead
         let botId = bot_account_id;

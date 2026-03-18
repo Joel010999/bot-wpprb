@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 export default async function handler(req, res) {
     if (req.method === "GET") {
         try {
-            const db = getDb();
+            const db = await getDb();
             const result = await db.execute("SELECT * FROM bot_accounts ORDER BY last_active DESC");
             return res.status(200).json({ bots: result.rows });
         } catch (error) {
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
             // Normalizar el nombre borrando arrobas iniciales si las pusieron
             const normalizedUsername = username.replace(/^@/, "").trim().toLowerCase();
 
-            const db = getDb();
+            const db = await getDb();
 
             await db.execute({
                 sql: `INSERT INTO bot_accounts (username, proxy_endpoint, daily_dm_limit, status) 
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     if (req.method === "PUT") {
         try {
             const { id, status } = req.body;
-            const db = getDb();
+            const db = await getDb();
 
             if (!id || !status) {
                 return res.status(400).json({ error: "Faltan datos para actualizar" });

@@ -13,7 +13,7 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "Falta ID del bot" });
         }
 
-        const db = getDb();
+        const db = await getDb();
         const result = await db.execute({
             sql: "SELECT * FROM bot_accounts WHERE id = ?",
             args: [id]
