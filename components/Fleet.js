@@ -69,6 +69,9 @@ export default function Fleet() {
     }
 
     const [startingBot, setStartingBot] = useState(null);
+    const [injectingBot, setInjectingBot] = useState(null);
+    const [sessionJson, setSessionJson] = useState("");
+
     async function startBotSession(id) {
         setStartingBot(id);
         try {
@@ -89,6 +92,30 @@ export default function Fleet() {
         } finally {
             setStartingBot(null);
             fetchBots();
+        }
+    }
+
+    async function injectSession() {
+        if (!injectingBot || !sessionJson) return;
+        try {
+            const res = await fetch("/api/bots/inject-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    username: injectingBot.username,
+                    session_json: sessionJson
+                }),
+            });
+            if (res.ok) {
+                alert("✅ Sesión inyectada correctamente.");
+                setInjectingBot(null);
+                setSessionJson("");
+            } else {
+                const err = await res.json();
+                alert("❌ Error: " + err.error);
+            }
+        } catch (err) {
+            alert("Error al conectar con la API.");
         }
     }
 
@@ -202,6 +229,15 @@ export default function Fleet() {
                                     >
                                         {startingBot === bot.id ? "⏳ Abriendo..." : "▶ Iniciar Sesión"}
                                     </button>
+
+                                    <button
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={() => setInjectingBot(bot)}
+                                        title="Inyectar Sesión JSON"
+                                        style={{ padding: "0 10px" }}
+                                    >
+                                        🔑
+                                    </button>
                                     
                                     {bot.status === "active" ? (
                                         <button
@@ -308,6 +344,43 @@ export default function Fleet() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {/* Inject Session Modal */}
+            {injectingBot && (
+                <div className="modal-overlay" onClick={() => setInjectingBot(null)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <span className="modal-title">Inyectar Sesión JSON — @{injectingBot.username}</span>
+                            <button className="btn btn-icon btn-secondary" onClick={() => setInjectingBot(null)}>
+                                ✕
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                                Pegá el contenido del archivo JSON de sesión generado localmente. 
+                                Esto permitirá al bot usar las cookies sin login manual.
+                            </p>
+                            <div className="form-group">
+                                <label className="form-label">JSON de Sesión (Playwright storageState)</label>
+                                <textarea
+                                    className="input"
+                                    style={{ height: "200px", fontFamily: "monospace", fontSize: "11px", resize: "none" }}
+                                    placeholder='{ "cookies": [...], "origins": [...] }'
+                                    value={sessionJson}
+                                    onChange={(e) => setSessionJson(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-secondary" onClick={() => setInjectingBot(null)}>
+                                Cancelar
+                            </button>
+                            <button className="btn btn-primary" onClick={injectSession} disabled={!sessionJson}>
+                                💉 Inyectar Sesión
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
