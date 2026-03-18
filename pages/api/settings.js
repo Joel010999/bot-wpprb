@@ -26,19 +26,13 @@ export default async function handler(req, res) {
             const data = req.body;
             const db = getDb();
 
-            const queries = Object.entries(data).map(([key, value]) => {
+            for (const [key, value] of Object.entries(data)) {
                 const stringValue = typeof value === 'boolean' ? value.toString() : String(value || "");
                 const sqlQuery = db.isPostgres
                     ? "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
                     : "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
-                return {
-                    sql: sqlQuery,
-                    args: [key, stringValue]
-                };
-            });
-
-            for (const q of queries) {
-                await db.execute(q);
+                
+                await db.execute(sqlQuery, [key, stringValue]);
             }
 
             if (data.openaiKey !== undefined) {
