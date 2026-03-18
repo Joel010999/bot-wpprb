@@ -28,8 +28,11 @@ export default async function handler(req, res) {
 
             const queries = Object.entries(data).map(([key, value]) => {
                 const stringValue = typeof value === 'boolean' ? value.toString() : String(value || "");
+                const sqlQuery = db.isPostgres
+                    ? "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+                    : "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
                 return {
-                    sql: "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    sql: sqlQuery,
                     args: [key, stringValue]
                 };
             });
