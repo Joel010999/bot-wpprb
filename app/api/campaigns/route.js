@@ -115,10 +115,10 @@ async function triggerCampaignAction(campaignId) {
         const { context, browser } = session;
 
         try {
-            // ── FASE 1: AUTO-SCRAPE si no hay prospectos pendientes ──
-            if (campaign.pending_count === 0) {
+            // ── FASE 1: AUTO-SCRAPE si hay menos de 10 prospectos pendientes ──
+            if (campaign.pending_count < 10) {
                 if (!campaign.target_source) {
-                    console.log(`[CAMPAIGN TRIGGER] Sin prospectos y sin target_source. Pausando.`);
+                    console.log(`[CAMPAIGN TRIGGER] Sin prospectos pendientes y sin target_source. Pausando.`);
                     await db.execute({
                         sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id = ?`,
                         args: ["Pausada — Sin prospectos en cola y sin fuente de búsqueda configurada", campaignId]
@@ -128,7 +128,7 @@ async function triggerCampaignAction(campaignId) {
                 }
 
                 const targetAccount = campaign.target_source.replace(/^@/, "").trim();
-                console.log(`[CAMPAIGN TRIGGER] 0 prospectos. Scrapeando seguidores de @${targetAccount}...`);
+                console.log(`[CAMPAIGN TRIGGER] < 10 prospectos. Iniciando fase recolección (Scrape) de seguidores de @${targetAccount}...`);
                 await db.execute({
                     sql: `UPDATE campaigns SET status_message = ? WHERE id = ?`,
                     args: [`Scrapeando seguidores de @${targetAccount}...`, campaignId]
