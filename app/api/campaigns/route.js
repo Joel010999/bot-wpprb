@@ -29,16 +29,16 @@ export async function POST(request) {
 
         const db = await getDb();
         const campaignId = crypto.randomUUID().replace(/-/g, "").substring(0, 32);
-        
+
         await db.execute({
             sql: `INSERT INTO campaigns (id, name, niche, target_source, daily_limit, niche_context, search_keyword)
                   VALUES (?, ?, ?, ?, ?, ?, ?)`,
             args: [
                 campaignId,
-                name, 
-                niche || "", 
-                target_source || "", 
-                daily_limit || 20, 
+                name,
+                niche || "",
+                target_source || "",
+                daily_limit || 20,
                 niche_context || "",
                 search_keyword || ""
             ]
@@ -61,15 +61,15 @@ export async function PUT(request) {
         }
 
         const db = await getDb();
-        
+
         await db.execute({
             sql: `UPDATE campaigns SET status = ? WHERE id = ?`,
             args: [status, id]
         });
-        
+
         // Gatillar campaña en background cuando se activa
-        if(status === 'active') {
-             triggerCampaignAction(id).catch(console.error);
+        if (status === 'active') {
+            triggerCampaignAction(id).catch(console.error);
         }
 
         return NextResponse.json({ success: true, message: `Campaña actualizada a ${status}` });
@@ -215,7 +215,7 @@ async function triggerCampaignAction(campaignId) {
                 // 2. Contactados que no han sido revisados hace más de 15 minutos
                 let prospect;
                 try {
-                    const sqlQuery = db.isPostgres 
+                    const sqlQuery = db.isPostgres
                         ? `SELECT * FROM prospects 
                            WHERE status = 'pendiente'
                            AND campaign_id = ? 
@@ -333,7 +333,7 @@ async function triggerCampaignAction(campaignId) {
 
         } finally {
             // Guardar sesión y cerrar browser al finalizar TODO el flujo
-            await saveSession(bot.username, context).catch(() => {});
+            await saveSession(bot.username, context).catch(() => { });
             await browser.close();
         }
 
