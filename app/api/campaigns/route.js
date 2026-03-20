@@ -296,7 +296,7 @@ async function triggerCampaignAction(campaignId) {
 
                 if (dmResult.sent && dmResult.verified) {
                     await db.execute({
-                        sql: "UPDATE prospects SET status = 'contactado' WHERE id = ?",
+                        sql: "UPDATE prospects SET status = 'finalizado' WHERE id = ?",
                         args: [prospect.id]
                     });
                     dmsSentToday++;
