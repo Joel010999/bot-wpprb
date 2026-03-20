@@ -217,15 +217,13 @@ async function triggerCampaignAction(campaignId) {
                 try {
                     const sqlQuery = db.isPostgres 
                         ? `SELECT * FROM prospects 
-                           WHERE ((status = 'pendiente')
-                           OR (status = 'contactado' AND (last_checked_at IS NULL OR last_checked_at < NOW() - INTERVAL '15 minutes')))
+                           WHERE status = 'pendiente'
                            AND campaign_id = ? 
-                           ORDER BY status ASC, last_checked_at ASC LIMIT 1`
+                           ORDER BY id ASC LIMIT 1`
                         : `SELECT * FROM prospects 
-                           WHERE ((status = 'pendiente')
-                           OR (status = 'contactado' AND (last_checked_at IS NULL OR datetime(last_checked_at) < datetime('now', '-15 minutes'))))
+                           WHERE status = 'pendiente'
                            AND campaign_id = ? 
-                           ORDER BY status ASC, last_checked_at ASC LIMIT 1`;
+                           ORDER BY id ASC LIMIT 1`;
 
                     const prospectRes = await db.execute({
                         sql: sqlQuery,
