@@ -264,11 +264,11 @@ async function triggerCampaignAction(campaignId) {
                         sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
                         args: [prospect.id]
                     });
-                    
+
                     const pauseMs = Math.floor(Math.random() * 15000) + 15000;
                     console.log(`[CAMPAIGN] Error detectado. Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
                     await page.waitForTimeout(pauseMs);
-                    
+
                     continue; // Pasar al siguiente
                 }
 
