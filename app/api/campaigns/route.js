@@ -252,10 +252,25 @@ async function triggerCampaignAction(campaignId) {
 
                 console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
 
-                const dmResult = await sendAndVerifyDM(page, prospect.username, {
-                    bio: prospect.biography,
-                    config: { niche_context: campaign.niche_context }
-                }, console.log);
+                let dmResult;
+                try {
+                    dmResult = await sendAndVerifyDM(page, prospect.username, {
+                        bio: prospect.biography,
+                        config: { niche_context: campaign.niche_context }
+                    }, console.log);
+                } catch (sendErr) {
+                    console.error(`[CAMPAIGN ERROR] Fallo enviando DM a @${prospect.username}:`, sendErr.message);
+                    await db.execute({
+                        sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
+                        args: [prospect.id]
+                    });
+                    
+                    const pauseMs = Math.floor(Math.random() * 15000) + 15000;
+                    console.log(`[CAMPAIGN] Error detectado. Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
+                    await page.waitForTimeout(pauseMs);
+                    
+                    continue; // Pasar al siguiente
+                }
 
                 // ── Sincronizar Historial en DB ──
                 if (dmResult.chatHistory && dmResult.chatHistory.length > 0) {
