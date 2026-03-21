@@ -323,9 +323,9 @@ async function triggerCampaignAction(campaignId) {
                     }
                 }
 
-                // Pausa entre prospectos (1-3 minutos)
-                const pauseMs = Math.floor(Math.random() * 120000) + 60000;
-                console.log(`[CAMPAIGN] Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
+                // Pausa entre prospectos (15-30 segundos - MODO ULTRA-RÁPIDO)
+                const pauseMs = Math.floor(Math.random() * 15000) + 15000;
+                console.log(`[CAMPAIGN (ULTRA-RÁPIDO)] Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
                 await page.waitForTimeout(pauseMs);
             }
 
