@@ -4,9 +4,10 @@ import { getDb } from "@/lib/db";
 export async function GET() {
     try {
         const db = await getDb();
+        const pendingCountQuery = db.isPostgres ? "campaign_id = c.id::text" : "campaign_id = c.id";
         const result = await db.execute(`
             SELECT c.*, 
-                   (SELECT COUNT(*) FROM prospects WHERE campaign_id = c.id AND status = 'pendiente') AS pending_count 
+                   (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'pendiente') AS pending_count 
             FROM campaigns c
             ORDER BY created_at DESC
         `);
@@ -244,98 +245,91 @@ async function triggerCampaignAction(campaignId) {
                     break;
                 }
 
-                // Marcar como revisado ahora mismo
-                await db.execute({
-                    sql: "UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    args: [prospect.id]
-                });
-
-                console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
-
-                let dmResult;
                 try {
-                    dmResult = await sendAndVerifyDM(page, prospect.username, {
+                    // Marcar como revisado ahora mismo
+                    await db.execute({
+                        sql: "UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        args: [prospect.id]
+                    });
+
+                    console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
+
+                    let dmResult = await sendAndVerifyDM(page, prospect.username, {
                         bio: prospect.biography,
                         config: { niche_context: campaign.niche_context }
                     }, console.log);
-                } catch (sendErr) {
-                    console.error(`[CAMPAIGN ERROR] Fallo enviando DM a @${prospect.username}:`, sendErr.message);
-                    await db.execute({
-                        sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
-                        args: [prospect.id]
-                    });
 
-                    const pauseMs = Math.floor(Math.random() * 15000) + 15000;
-                    console.log(`[CAMPAIGN] Error detectado. Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
-                    await page.waitForTimeout(pauseMs);
-
-                    continue; // Pasar al siguiente
-                }
-
-                // ── Sincronizar Historial en DB ──
-                if (dmResult.chatHistory && dmResult.chatHistory.length > 0) {
-                    // Buscar o crear lead en tabla leads para linkear mensajes
-                    let leadId = null;
-                    try {
-                        const leadCheck = await db.execute({
-                            sql: "SELECT id FROM leads WHERE ig_handle = ?",
-                            args: [prospect.username]
-                        });
-                        if (leadCheck.rows.length > 0) {
-                            leadId = leadCheck.rows[0].id;
-                        } else {
-                            const newLeadRes = await db.execute({
-                                sql: `INSERT INTO leads (ig_handle, bio_data, status, campaign_id) VALUES (?, ?, 'contacted', ?) RETURNING id`,
-                                args: [prospect.username, prospect.biography || "", campaignId]
+                    // ── Sincronizar Historial en DB ──
+                    if (dmResult.chatHistory && dmResult.chatHistory.length > 0) {
+                        // Buscar o crear lead en tabla leads para linkear mensajes
+                        let leadId = null;
+                        try {
+                            const leadCheck = await db.execute({
+                                sql: "SELECT id FROM leads WHERE ig_handle = ?",
+                                args: [prospect.username]
                             });
-                            leadId = newLeadRes.rows[0]?.id || null;
-                        }
-
-                        if (leadId) {
-                            // Guardar todos los mensajes que no existan aún
-                            for (const msg of dmResult.chatHistory) {
-                                await db.execute({
-                                    sql: `INSERT INTO messages (lead_id, bot_account_id, content, role)
-                                          SELECT ?, ?, ?, ?
-                                          WHERE NOT EXISTS (
-                                              SELECT 1 FROM messages WHERE lead_id = ? AND content = ? AND role = ?
-                                          )`,
-                                    args: [leadId, bot.id, msg.content, msg.role, leadId, msg.content, msg.role]
+                            if (leadCheck.rows.length > 0) {
+                                leadId = leadCheck.rows[0].id;
+                            } else {
+                                const newLeadRes = await db.execute({
+                                    sql: `INSERT INTO leads (ig_handle, bio_data, status, campaign_id) VALUES (?, ?, 'contacted', ?) RETURNING id`,
+                                    args: [prospect.username, prospect.biography || "", campaignId]
                                 });
+                                leadId = newLeadRes.rows[0]?.id || null;
                             }
+
+                            if (leadId) {
+                                // Guardar todos los mensajes que no existan aún
+                                for (const msg of dmResult.chatHistory) {
+                                    await db.execute({
+                                        sql: `INSERT INTO messages (lead_id, bot_account_id, content, role)
+                                              SELECT ?, ?, ?, ?
+                                              WHERE NOT EXISTS (
+                                                  SELECT 1 FROM messages WHERE lead_id = ? AND content = ? AND role = ?
+                                              )`,
+                                        args: [leadId, bot.id, msg.content, msg.role, leadId, msg.content, msg.role]
+                                    });
+                                }
+                            }
+                        } catch (e) {
+                            console.error("[CAMPAIGN SYNC] Error sincronizando mensajes:", e.message);
                         }
-                    } catch (e) {
-                        console.error("[CAMPAIGN SYNC] Error sincronizando mensajes:", e.message);
                     }
-                }
 
-                if (dmResult.sent && dmResult.verified) {
-                    await db.execute({
-                        sql: "UPDATE prospects SET status = 'finalizado' WHERE id = ?",
-                        args: [prospect.id]
-                    });
-                    dmsSentToday++;
-                    console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${campaign.daily_limit})`);
+                    if (dmResult.sent && dmResult.verified) {
+                        await db.execute({
+                            sql: "UPDATE prospects SET status = 'finalizado' WHERE id = ?",
+                            args: [prospect.id]
+                        });
+                        dmsSentToday++;
+                        console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${campaign.daily_limit})`);
 
-                    await db.execute({
-                        sql: `UPDATE campaigns SET dms_sent = dms_sent + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: [campaignId]
-                    });
-                    await db.execute({
-                        sql: `UPDATE bot_accounts SET daily_dm_count = daily_dm_count + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: [bot.id]
-                    });
-                } else {
-                    console.log(`[CAMPAIGN] Fallo DM para @${prospect.username}. Marcar como error.`);
+                        await db.execute({
+                            sql: `UPDATE campaigns SET dms_sent = dms_sent + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [campaignId]
+                        });
+                        await db.execute({
+                            sql: `UPDATE bot_accounts SET daily_dm_count = daily_dm_count + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [bot.id]
+                        });
+                    } else {
+                        console.log(`[CAMPAIGN] Fallo DM para @${prospect.username}. Marcar como error.`);
+                        await db.execute({
+                            sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
+                            args: [prospect.id]
+                        });
+
+                        if (dmResult.error === "Bloqueo en Engagement") {
+                            console.log("[CAMPAIGN] Bloqueo crítico en engagement detectado. Deteniendo campaña preventivamente.");
+                            break;
+                        }
+                    }
+                } catch (processErr) {
+                    console.error(`[CAMPAIGN ERROR] Fallo procesando prospecto @${prospect.username}:`, processErr.message);
                     await db.execute({
                         sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
                         args: [prospect.id]
-                    });
-
-                    if (dmResult.error === "Bloqueo en Engagement") {
-                        console.log("[CAMPAIGN] Bloqueo crítico en engagement detectado. Deteniendo campaña preventivamente.");
-                        break;
-                    }
+                    }).catch(() => {});
                 }
 
                 // Pausa entre prospectos (15-30 segundos - MODO ULTRA-RÁPIDO)
