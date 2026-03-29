@@ -153,17 +153,18 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         // Determinar qué bot usar: si el admin dispara una campaña, usa el bot del dueño original
         const effectiveUser = (currentUser === 'admin_joel') ? campaign.owner_user : (currentUser || campaign.owner_user);
 
-        // Obtener bot activo asignado al usuario o fallback al primero
-        let botRes;
-        if (effectiveUser) {
-            botRes = await db.execute(`SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = '${effectiveUser}' LIMIT 1`);
-        }
-        if (!botRes || botRes.rows.length === 0) {
-            botRes = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' LIMIT 1");
-        }
+        let botRes = await db.execute({
+            sql: "SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = ? LIMIT 1",
+            args: [effectiveUser]
+        });
+        
         const bot = botRes.rows[0];
         if (!bot) {
-            console.log("[CAMPAIGN ERROR] No hay bots activos.");
+            console.log(`[CAMPAIGN ERROR] No hay bots activos asignados para el usuario: ${effectiveUser}`);
+            await db.execute({
+                sql: `UPDATE campaigns SET status='paused', status_message='No tenés un bot asignado o activo' WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
+                args: [campaign.id]
+            });
             return;
         }
 
