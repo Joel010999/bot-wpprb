@@ -1,10 +1,25 @@
 import { getDb } from "@/lib/db";
 
 export default async function handler(req, res) {
+    const sessionCookie = req.cookies.rle_session;
+    let currentUser = null;
+    if (sessionCookie && sessionCookie.startsWith('authenticated_')) {
+        currentUser = sessionCookie.replace('authenticated_', '');
+    }
     if (req.method === "GET") {
         try {
             const db = await getDb();
-            const result = await db.execute("SELECT * FROM bot_accounts ORDER BY last_active DESC");
+            let sqlQuery = "SELECT * FROM bot_accounts ORDER BY last_active DESC";
+            let args = [];
+            
+            const isAdmin = currentUser === 'admin_joel';
+            
+            if (currentUser && !isAdmin) {
+                sqlQuery = "SELECT * FROM bot_accounts WHERE owner_user = ? ORDER BY last_active DESC";
+                args = [currentUser];
+            }
+            
+            const result = await db.execute({ sql: sqlQuery, args });
             return res.status(200).json({ bots: result.rows });
         } catch (error) {
             console.error("[Bots API] Error GET:", error);
@@ -26,9 +41,9 @@ export default async function handler(req, res) {
             const db = await getDb();
 
             await db.execute({
-                sql: `INSERT INTO bot_accounts (username, proxy_endpoint, daily_dm_limit, status) 
-                      VALUES (?, ?, ?, 'active')`,
-                args: [normalizedUsername, proxy_endpoint || "", daily_dm_limit || 25]
+                sql: `INSERT INTO bot_accounts (username, proxy_endpoint, daily_dm_limit, status, owner_user) 
+                      VALUES (?, ?, ?, 'active', ?)`,
+                args: [normalizedUsername, proxy_endpoint || "", daily_dm_limit || 25, currentUser]
             });
 
             return res.status(200).json({ success: true });

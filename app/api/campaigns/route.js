@@ -1,16 +1,37 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 
-export async function GET() {
+export async function GET(request) {
     try {
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        if (!currentUser) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
         const db = await getDb();
         const pendingCountQuery = db.isPostgres ? "campaign_id = c.id::text" : "campaign_id = c.id";
-        const result = await db.execute(`
+        
+        const isAdmin = currentUser === 'admin_joel';
+        let sql = `
             SELECT c.*, 
                    (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'pendiente') AS pending_count 
             FROM campaigns c
-            ORDER BY created_at DESC
-        `);
+        `;
+        let args = [];
+
+        if (!isAdmin) {
+            sql += ` WHERE c.owner_user = ?`;
+            args.push(currentUser);
+        }
+
+        sql += ` ORDER BY created_at DESC`;
+
+        const result = await db.execute({ sql, args });
 
         return NextResponse.json({ campaigns: result.rows });
     } catch (err) {
@@ -28,12 +49,22 @@ export async function POST(request) {
             return NextResponse.json({ error: "El nombre de la campaña es obligatorio" }, { status: 400 });
         }
 
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        if (!currentUser) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
         const db = await getDb();
         const campaignId = crypto.randomUUID().replace(/-/g, "").substring(0, 32);
 
         await db.execute({
-            sql: `INSERT INTO campaigns (id, name, niche, target_source, daily_limit, niche_context, search_keyword)
-                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            sql: `INSERT INTO campaigns (id, name, niche, target_source, daily_limit, niche_context, search_keyword, owner_user)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             args: [
                 campaignId,
                 name,
@@ -41,7 +72,8 @@ export async function POST(request) {
                 target_source || "",
                 daily_limit || 20,
                 niche_context || "",
-                search_keyword || ""
+                search_keyword || "",
+                currentUser
             ]
         });
 
@@ -61,7 +93,32 @@ export async function PUT(request) {
             return NextResponse.json({ error: "ID y status son obligatorios" }, { status: 400 });
         }
 
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        if (!currentUser) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
         const db = await getDb();
+
+        // Verificamos propiedad de la campaña
+        const checkOwnership = await db.execute({
+            sql: `SELECT owner_user FROM campaigns WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
+            args: [id]
+        });
+
+        const campaign = checkOwnership.rows[0];
+        if (!campaign) {
+            return NextResponse.json({ error: "Campaña no encontrada" }, { status: 404 });
+        }
+
+        if (campaign.owner_user !== currentUser) {
+            return NextResponse.json({ error: "Acceso denegado: esta campaña pertenece a otro usuario limitando 403" }, { status: 403 });
+        }
 
         await db.execute({
             sql: `UPDATE campaigns SET status = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
@@ -70,7 +127,7 @@ export async function PUT(request) {
 
         // Gatillar campaña en background cuando se activa
         if (status === 'active') {
-            triggerCampaignAction(id).catch(console.error);
+            triggerCampaignAction(id, currentUser).catch(console.error);
         }
 
         return NextResponse.json({ success: true, message: `Campaña actualizada a ${status}` });
@@ -80,9 +137,9 @@ export async function PUT(request) {
     }
 }
 
-async function triggerCampaignAction(campaignId) {
+async function triggerCampaignAction(campaignId, currentUser = null) {
     const db = await getDb();
-    console.log(`[CAMPAIGN TRIGGER] Lanzando campaña ${campaignId}...`);
+    console.log(`[CAMPAIGN TRIGGER] Lanzando campaña ${campaignId} por el usuario ${currentUser || 'sistema'}...`);
 
     try {
         // Obtener detalles de la campaña
@@ -93,8 +150,17 @@ async function triggerCampaignAction(campaignId) {
         const campaign = campaignRes.rows[0];
         if (!campaign) return;
 
-        // Obtener bot activo
-        const botRes = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' LIMIT 1");
+        // Determinar qué bot usar: si el admin dispara una campaña, usa el bot del dueño original
+        const effectiveUser = (currentUser === 'admin_joel') ? campaign.owner_user : (currentUser || campaign.owner_user);
+
+        // Obtener bot activo asignado al usuario o fallback al primero
+        let botRes;
+        if (effectiveUser) {
+            botRes = await db.execute(`SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = '${effectiveUser}' LIMIT 1`);
+        }
+        if (!botRes || botRes.rows.length === 0) {
+            botRes = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' LIMIT 1");
+        }
         const bot = botRes.rows[0];
         if (!bot) {
             console.log("[CAMPAIGN ERROR] No hay bots activos.");

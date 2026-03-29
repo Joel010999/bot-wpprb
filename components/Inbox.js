@@ -12,11 +12,13 @@ export default function Inbox() {
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState(null);
     const [togglingPause, setTogglingPause] = useState(false);
+    const [userRole, setUserRole] = useState("operator");
     const messagesEndRef = useRef(null);
 
     const isAutomationPaused = selectedLead?.automation_paused === 1;
 
     useEffect(() => {
+        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => {});
         fetchConversations();
         const interval = setInterval(fetchConversations, 10000);
         return () => clearInterval(interval);
@@ -184,7 +186,14 @@ export default function Inbox() {
                                 </div>
                                 <div className="conversation-info">
                                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                        <span className="conversation-name">@{lead.ig_handle}</span>
+                                        <span className="conversation-name" style={{ display: "flex", flexDirection: "column" }}>
+                                            @{lead.ig_handle}
+                                            {userRole === 'admin' && lead.owner_user && (
+                                                <span style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "2px", fontWeight: "normal", whiteSpace: "nowrap" }}>
+                                                    👤 {lead.owner_user}
+                                                </span>
+                                            )}
+                                        </span>
                                         {lead.automation_paused === 1 && (
                                             <span style={{
                                                 fontSize: "9px",

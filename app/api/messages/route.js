@@ -10,7 +10,42 @@ export async function GET(request) {
             return NextResponse.json({ error: "lead_id es obligatorio" }, { status: 400 });
         }
 
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        if (!currentUser) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
         const db = await getDb();
+
+        // Validar propiedad del Lead (si el bot que interactuó pertenece al usuario)
+        const checkLeadAccess = await db.execute({
+            sql: `SELECT 1 FROM messages m
+                  JOIN bot_accounts b ON m.bot_account_id = b.id
+                  WHERE m.lead_id = ? AND b.owner_user = ? LIMIT 1`,
+            args: [leadId, currentUser]
+        });
+
+        // Fallback: Si no tiene mensajes aún, verificar por owner de la campaña asociada al lead
+        let hasAccess = checkLeadAccess.rows.length > 0;
+        if (!hasAccess) {
+            const checkCampAccess = await db.execute({
+                sql: `SELECT 1 FROM leads l
+                      JOIN campaigns c ON l.campaign_id = c.id
+                      WHERE l.id = ? AND c.owner_user = ? LIMIT 1`,
+                args: [leadId, currentUser]
+            });
+            hasAccess = checkCampAccess.rows.length > 0;
+        }
+
+        if (!hasAccess) {
+            return NextResponse.json({ error: "Acceso denegado: este lead o sus mensajes pertenecen a una campaña ajena" }, { status: 403 });
+        }
+
         const result = await db.execute({
             sql: "SELECT * FROM messages WHERE lead_id = ? ORDER BY sent_at ASC",
             args: [leadId]

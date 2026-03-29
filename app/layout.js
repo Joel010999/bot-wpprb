@@ -3,7 +3,7 @@ import "./globals.css";
 export const metadata = {
   title: "Renderbyte Lead Engine",
   description: "Sistema de Adquisición de Leads de Alto Rendimiento por Renderbyte",
-  icons: { icon: "/favicon.ico" },
+  icons: { icon: "/favicon.png" },
 };
 
 export default function RootLayout({ children }) {

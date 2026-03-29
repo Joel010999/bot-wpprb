@@ -14,13 +14,36 @@ export async function GET(request) {
             // Lógica de Bandeja/Leads
             let sql = `SELECT l.*, 
                         (SELECT content FROM messages WHERE lead_id = l.id ORDER BY sent_at DESC LIMIT 1) AS last_message,
-                        (SELECT COUNT(*) FROM messages WHERE lead_id = l.id) AS message_count
+                        (SELECT COUNT(*) FROM messages WHERE lead_id = l.id) AS message_count,
+                        (SELECT owner_user FROM campaigns WHERE id = l.campaign_id) AS owner_user
                        FROM leads l`;
-            const args = [];
+            // Multi-Tenancy filter: Solo ver leads donde MI bot haya interactuado
+            const session = request.cookies.get('rle_session');
+            let currentUser = null;
+            if (session && session.value.startsWith('authenticated_')) {
+                currentUser = session.value.replace('authenticated_', '');
+            }
+
+            const isAdmin = currentUser === 'admin_joel';
+
+            let whereClauses = [];
+            if (currentUser && !isAdmin) {
+                whereClauses.push(`EXISTS (
+                    SELECT 1 FROM messages m 
+                    JOIN bot_accounts b ON m.bot_account_id = b.id 
+                    WHERE m.lead_id = l.id AND b.owner_user = ?
+                )`);
+                args.push(currentUser);
+            }
             if (statusStr) {
-                sql += " WHERE l.status = ?";
+                whereClauses.push("l.status = ?");
                 args.push(statusStr);
             }
+
+            if (whereClauses.length > 0) {
+                sql += " WHERE " + whereClauses.join(" AND ");
+            }
+
             sql += " ORDER BY l.created_at DESC LIMIT ?";
             args.push(limit);
 
@@ -30,10 +53,29 @@ export async function GET(request) {
             // Lógica de Prospectos (Default)
             let query = "SELECT * FROM prospects";
             let args = [];
+            
+            const session = request.cookies.get('rle_session');
+            let currentUser = null;
+            if (session && session.value.startsWith('authenticated_')) {
+                currentUser = session.value.replace('authenticated_', '');
+            }
+
+            const isAdmin = currentUser === 'admin_joel';
+
+            let whereClauses = [];
+            if (currentUser && !isAdmin) {
+                whereClauses.push(`(owner_user = ? OR campaign_id IN (SELECT id FROM campaigns WHERE owner_user = ?))`);
+                args.push(currentUser, currentUser);
+            }
             if (statusStr) {
-                query += " WHERE status = ?";
+                whereClauses.push("status = ?");
                 args.push(statusStr);
             }
+
+            if (whereClauses.length > 0) {
+                query += " WHERE " + whereClauses.join(" AND ");
+            }
+
             query += " ORDER BY created_at DESC LIMIT ?";
             args.push(limit);
 
@@ -58,16 +100,22 @@ export async function POST(request) {
         const cleanUsername = username.replace(/^@/, "").trim().toLowerCase();
         const initialStatus = status || 'pendiente';
 
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
         const db = await getDb();
         
         await db.execute({
-            sql: `INSERT INTO prospects (username, full_name, biography, status)
-                  VALUES (?, ?, ?, ?)
+            sql: `INSERT INTO prospects (username, full_name, biography, status, owner_user)
+                  VALUES (?, ?, ?, ?, ?)
                   ON CONFLICT(username) DO UPDATE SET
                   full_name = excluded.full_name,
                   biography = excluded.biography,
                   status = CASE WHEN prospects.status = 'pendiente' THEN excluded.status ELSE prospects.status END`,
-            args: [cleanUsername, full_name || "", biography || "", initialStatus]
+            args: [cleanUsername, full_name || "", biography || "", initialStatus, currentUser]
         });
 
         return NextResponse.json({ success: true, message: `Prospecto @${cleanUsername} guardado.` });

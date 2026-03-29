@@ -5,11 +5,29 @@ export const dynamic = 'force-dynamic';
 export async function GET(req) {
     try {
         const db = await getDb();
+        
+        const cookieStore = req.cookies;
+        const session = cookieStore.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        const isAdmin = currentUser === 'admin_joel';
+        let botFilter = "WHERE status = 'active'";
+        let botArgs = [];
+        if (currentUser && !isAdmin) {
+            botFilter += " AND owner_user = ?";
+            botArgs.push(currentUser);
+        }
 
         const [totalLeads, contactedLeads, botsActive] = await Promise.all([
             db.execute("SELECT COUNT(*) as count FROM leads"),
             db.execute("SELECT COUNT(*) as count FROM leads WHERE status IN ('contacted', 'replied', 'interested', 'meeting_booked')"),
-            db.execute("SELECT COUNT(*) as count FROM bot_accounts WHERE status = 'active'")
+            db.execute({
+                sql: `SELECT COUNT(*) as count FROM bot_accounts ${botFilter}`,
+                args: botArgs
+            })
         ]);
 
         // Simulación básica de métricas o calculadas desde la tabla (simplificado)

@@ -8,8 +8,10 @@ export default function Fleet() {
     const [deploying, setDeploying] = useState(false);
     const [error, setError] = useState("");
     const [form, setForm] = useState({ username: "", proxy_endpoint: "", daily_dm_limit: "25" });
+    const [userRole, setUserRole] = useState("operator");
 
     useEffect(() => {
+        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => {});
         fetchBots();
         const interval = setInterval(fetchBots, 15000);
         return () => clearInterval(interval);
@@ -52,6 +54,19 @@ export default function Fleet() {
             fetchBots();
         } catch (err) {
             console.error("Error de red:", err);
+        }
+    }
+
+    async function assignBot(id, newOwner) {
+        try {
+            await fetch("/api/bots/assign", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, owner_user: newOwner }),
+            });
+            fetchBots();
+        } catch (err) {
+            console.error("Error asignando bot:", err);
         }
     }
 
@@ -167,7 +182,9 @@ export default function Fleet() {
                                         🤖
                                     </div>
                                     <div>
-                                        <div style={{ fontWeight: 600, fontSize: "15px" }}>@{bot.username}</div>
+                                        <div style={{ fontWeight: 600, fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                                            @{bot.username}
+                                        </div>
                                         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
                                             <span className={`dot ${statusDot(bot.status)}`}></span>
                                             <span style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "capitalize" }}>
@@ -176,6 +193,26 @@ export default function Fleet() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Assign Operator */}
+                                {userRole === 'admin' && (
+                                    <div style={{ marginBottom: "12px", background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "8px", border: "1px solid var(--border-subtle)" }}>
+                                        <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px", textTransform: "uppercase", fontWeight: 600 }}>
+                                            👤 Operador Asignado
+                                        </div>
+                                        <select 
+                                            className="input" 
+                                            style={{ padding: "6px 10px", fontSize: "13px", height: "auto" }}
+                                            value={bot.owner_user || ""}
+                                            onChange={(e) => assignBot(bot.id, e.target.value)}
+                                        >
+                                            <option value="">-- Sin Asignar --</option>
+                                            <option value="renderbyte1">renderbyte1</option>
+                                            <option value="renderbyte73">renderbyte73</option>
+                                            <option value="renderbyte152">renderbyte152</option>
+                                        </select>
+                                    </div>
+                                )}
 
                                 {/* DM Progress */}
                                 <div style={{ marginBottom: "12px" }}>
@@ -220,24 +257,28 @@ export default function Fleet() {
                                 </div>
 
                                 {/* Actions */}
-                                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                                    <button
-                                        className="btn btn-primary btn-sm"
-                                        onClick={() => startBotSession(bot.id)}
-                                        disabled={startingBot === bot.id}
-                                        style={{ flex: "1 1 auto" }}
-                                    >
-                                        {startingBot === bot.id ? "⏳ Abriendo..." : "▶ Iniciar Sesión"}
-                                    </button>
+                                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
+                                    {userRole === "admin" && (
+                                        <>
+                                            <button
+                                                className="btn btn-primary btn-sm"
+                                                onClick={() => startBotSession(bot.id)}
+                                                disabled={startingBot === bot.id}
+                                                style={{ flex: "1 1 auto" }}
+                                            >
+                                                {startingBot === bot.id ? "⏳ Abriendo..." : "▶ Iniciar Sesión"}
+                                            </button>
 
-                                    <button
-                                        className="btn btn-secondary btn-sm"
-                                        onClick={() => setInjectingBot(bot)}
-                                        title="Inyectar Sesión JSON"
-                                        style={{ padding: "0 10px" }}
-                                    >
-                                        🔑
-                                    </button>
+                                            <button
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={() => setInjectingBot(bot)}
+                                                title="Inyectar Sesión JSON"
+                                                style={{ padding: "0 10px" }}
+                                            >
+                                                🔑
+                                            </button>
+                                        </>
+                                    )}
                                     
                                     {bot.status === "active" ? (
                                         <button

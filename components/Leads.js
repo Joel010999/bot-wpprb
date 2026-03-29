@@ -9,6 +9,11 @@ export default function Leads() {
     const [showModal, setShowModal] = useState(false);
     const [form, setForm] = useState({ ig_handle: "", followers_count: "", bio_data: "" });
     const [mounted, setMounted] = useState(false);
+    const [userRole, setUserRole] = useState("operator");
+
+    useEffect(() => {
+        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => {});
+    }, []);
 
     useEffect(() => {
         setMounted(true);
@@ -105,7 +110,14 @@ export default function Leads() {
                                 {leads.map((lead) => (
                                     <tr key={lead.id}>
                                         <td style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                                            @{lead.username}
+                                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                @{lead.username}
+                                                {userRole === 'admin' && lead.owner_user && (
+                                                    <span style={{ fontSize: "10px", background: "var(--bg-input)", padding: "2px 6px", borderRadius: "4px", color: "var(--text-muted)", fontWeight: "normal" }}>
+                                                        👤 {lead.owner_user}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td>{lead.full_name || "—"}</td>
                                         <td style={{ maxWidth: "300px" }}>

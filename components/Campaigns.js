@@ -14,9 +14,11 @@ export default function Campaigns() {
         search_keyword: "",
     });
     const [mounted, setMounted] = useState(false);
+    const [userRole, setUserRole] = useState("operator");
 
     useEffect(() => {
         setMounted(true);
+        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => {});
         fetchCampaigns();
         const interval = setInterval(fetchCampaigns, 10000);
         return () => clearInterval(interval);
@@ -140,8 +142,13 @@ export default function Campaigns() {
 
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
                                 <div>
-                                    <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "4px" }}>
+                                    <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
                                         {campaign.name}
+                                        {userRole === 'admin' && campaign.owner_user && (
+                                            <span style={{ fontSize: "10px", background: "var(--bg-input)", padding: "2px 6px", borderRadius: "4px", color: "var(--text-muted)", fontWeight: "normal" }}>
+                                                👤 {campaign.owner_user}
+                                            </span>
+                                        )}
                                     </div>
                                     {campaign.niche && (
                                         <span style={{

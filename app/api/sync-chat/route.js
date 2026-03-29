@@ -20,8 +20,21 @@ export async function POST(request) {
 
         if (!lead) return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 });
 
-        // Obtener bot activo
-        const botRes = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' LIMIT 1");
+        // Extraer usuario de cookie
+        const sessionCookie = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (sessionCookie && sessionCookie.value.startsWith('authenticated_')) {
+            currentUser = sessionCookie.value.replace('authenticated_', '');
+        }
+
+        // Obtener bot activo asignado al usuario
+        let botRes;
+        if (currentUser) {
+            botRes = await db.execute(`SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = '${currentUser}' LIMIT 1`);
+        }
+        if (!botRes || botRes.rows.length === 0) {
+            botRes = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' LIMIT 1");
+        }
         const bot = botRes.rows[0];
         if (!bot) return NextResponse.json({ error: "No hay bots activos" }, { status: 500 });
 

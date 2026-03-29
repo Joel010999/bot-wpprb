@@ -35,10 +35,13 @@ export default function Settings() {
     async function handleSave() {
         setSaved(false);
         try {
+            const payload = { ...config };
+            delete payload.openaiKey; // Protegido, no se envía
+
             const res = await fetch("/api/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(config),
+                body: JSON.stringify(payload),
             });
 
             if (res.ok) {
@@ -76,11 +79,12 @@ export default function Settings() {
                         <div className="form-group">
                             <label className="form-label">Clave API de OpenAI</label>
                             <input
-                                className="input"
+                                className="input disabled"
                                 type="password"
-                                placeholder="sk-..."
-                                value={config.openaiKey || ""}
-                                onChange={(e) => setConfig({ ...config, openaiKey: e.target.value })}
+                                disabled
+                                placeholder="•••••••••••••••• (Protegida en Servidor .env)"
+                                value="Protegida por entorno (.env)"
+                                style={{ backgroundColor: "rgba(255,255,255,0.05)", cursor: "not-allowed", color: "var(--text-muted)" }}
                             />
                         </div>
                         <div className="form-group">

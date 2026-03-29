@@ -48,10 +48,22 @@ export async function POST(req) {
                 // 1. OBTENER UN BOT ACTIVO DE LA FLOTA
                 log("Buscando un bot de Playwright activo...");
                 const db = await getDb();
-                const botQuery = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' ORDER BY RANDOM() LIMIT 1");
+                
+                // Extraer cookie del request headers
+                const cookieHeader = req.headers.get('cookie') || "";
+                const match = cookieHeader.match(/rle_session=authenticated_([^;]+)/);
+                const currentUser = match ? match[1] : null;
+
+                let botQuery;
+                if (currentUser) {
+                    botQuery = await db.execute(`SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = '${currentUser}' ORDER BY RANDOM() LIMIT 1`);
+                }
+                if (!botQuery || botQuery.rows.length === 0) {
+                    botQuery = await db.execute("SELECT * FROM bot_accounts WHERE status = 'active' ORDER BY RANDOM() LIMIT 1");
+                }
                 
                 if (botQuery.rows.length === 0) {
-                    sendEvent("error", { error: "No hay bots activos en La Flota. Activá al menos uno." });
+                    sendEvent("error", { error: "No hay bots activos en La Flota para usar el Francotirador." });
                     controller.close();
                     return;
                 }
