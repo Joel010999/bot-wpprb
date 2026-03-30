@@ -15,11 +15,11 @@ export async function GET(request) {
 
         const db = await getDb();
         const pendingCountQuery = db.isPostgres ? "campaign_id = c.id::text" : "campaign_id = c.id";
-        
+
         const isAdmin = currentUser === 'admin_joel';
         let sql = `
             SELECT c.*, 
-                   (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'pendiente') AS pending_count 
+                   (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'listo') AS pending_count 
             FROM campaigns c
         `;
         let args = [];
@@ -144,7 +144,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
     try {
         // Obtener detalles de la campaña
         const campaignRes = await db.execute({
-            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id = ${db.isPostgres ? 'c.id::text' : 'c.id'} AND status = 'pendiente') AS pending_count FROM campaigns c WHERE c.id = ${db.isPostgres ? '?::text' : '?'}`,
+            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id = ${db.isPostgres ? 'c.id::text' : 'c.id'} AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id = ${db.isPostgres ? '?::text' : '?'}`,
             args: [campaignId]
         });
         const campaign = campaignRes.rows[0];
@@ -157,7 +157,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
             sql: "SELECT * FROM bot_accounts WHERE status = 'active' AND owner_user = ? LIMIT 1",
             args: [effectiveUser]
         });
-        
+
         const bot = botRes.rows[0];
         if (!bot) {
             console.log(`[CAMPAIGN ERROR] No hay bots activos asignados para el usuario: ${effectiveUser}`);
@@ -215,6 +215,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     searchKeyword: campaign.search_keyword || "",
                     onLog: console.log,
                     campaignId,
+                    ownerUser: effectiveUser,
                 });
 
                 await scrapePage.close();
@@ -224,13 +225,15 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 for (const lead of leads) {
                     try {
                         await db.execute({
-                            sql: `INSERT INTO prospects (username, full_name, biography, status, campaign_id)
-                                  VALUES (?, ?, ?, 'pendiente', ?)
+                            sql: `INSERT INTO prospects (username, full_name, biography, status, campaign_id, owner_user)
+                                  VALUES (?, ?, ?, 'listo', ?, ?)
                                   ON CONFLICT(username) DO UPDATE SET
                                   full_name = excluded.full_name,
                                   biography = excluded.biography,
-                                  campaign_id = CASE WHEN prospects.campaign_id IS NULL THEN excluded.campaign_id ELSE prospects.campaign_id END`,
-                            args: [lead.username, lead.full_name || "", lead.biography || "", campaignId]
+                                  owner_user = excluded.owner_user,
+                                  campaign_id = CASE WHEN prospects.campaign_id IS NULL THEN excluded.campaign_id ELSE prospects.campaign_id END,
+                                  status = EXCLUDED.status`,
+                            args: [lead.username, lead.full_name || "", lead.biography || "", campaignId, effectiveUser]
                         });
                         inserted++;
                         console.log(`[DATABASE] Lead @${lead.username} guardado con éxito.`);
@@ -285,17 +288,19 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 try {
                     const sqlQuery = db.isPostgres
                         ? `SELECT * FROM prospects 
-                           WHERE status = 'pendiente'
+                           WHERE status = 'listo'
                            AND campaign_id = ?::text 
+                           AND owner_user = ?
                            ORDER BY id ASC LIMIT 1`
                         : `SELECT * FROM prospects 
-                           WHERE status = 'pendiente'
+                           WHERE status = 'listo'
                            AND campaign_id = ? 
+                           AND owner_user = ?
                            ORDER BY id ASC LIMIT 1`;
 
                     const prospectRes = await db.execute({
                         sql: sqlQuery,
-                        args: [campaignId]
+                        args: [campaignId, effectiveUser]
                     });
                     prospect = prospectRes.rows[0];
                 } catch (dbErr) {
@@ -396,7 +401,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     await db.execute({
                         sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
                         args: [prospect.id]
-                    }).catch(() => {});
+                    }).catch(() => { });
                 }
 
                 // Pausa entre prospectos (15-30 segundos - MODO ULTRA-RÁPIDO)

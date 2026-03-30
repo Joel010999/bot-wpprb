@@ -98,7 +98,7 @@ export async function POST(request) {
         }
 
         const cleanUsername = username.replace(/^@/, "").trim().toLowerCase();
-        const initialStatus = status || 'pendiente';
+        const initialStatus = status || 'listo';
 
         const session = request.cookies.get('rle_session');
         let currentUser = null;
@@ -114,7 +114,7 @@ export async function POST(request) {
                   ON CONFLICT(username) DO UPDATE SET
                   full_name = excluded.full_name,
                   biography = excluded.biography,
-                  status = CASE WHEN prospects.status = 'pendiente' THEN excluded.status ELSE prospects.status END`,
+                  status = CASE WHEN prospects.status = 'listo' THEN excluded.status ELSE prospects.status END`,
             args: [cleanUsername, full_name || "", biography || "", initialStatus, currentUser]
         });
 

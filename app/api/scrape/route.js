@@ -19,6 +19,16 @@ export async function POST(request) {
         const body = await request.json();
         const { target_url, scrape_type, filters, campaign_id } = body;
 
+        const session = request.cookies.get('rle_session');
+        let currentUser = null;
+        if (session && session.value.startsWith('authenticated_')) {
+            currentUser = session.value.replace('authenticated_', '');
+        }
+
+        if (!currentUser) {
+            return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+        }
+
         if (!target_url) {
             return NextResponse.json({ error: "URL objetivo es obligatoria" }, { status: 400 });
         }
@@ -40,7 +50,7 @@ export async function POST(request) {
         });
 
         // Lanzar scraping en background
-        runScrapeJob(jobId, target_url, filters || {}, campaign_id).catch(console.error);
+        runScrapeJob(jobId, target_url, filters || {}, campaign_id, currentUser).catch(console.error);
 
         return NextResponse.json({ success: true, jobId, message: "Scraping iniciado en background." });
     } catch (err) {
@@ -49,7 +59,7 @@ export async function POST(request) {
     }
 }
 
-async function runScrapeJob(jobId, targetUrl, filters, campaignId) {
+async function runScrapeJob(jobId, targetUrl, filters, campaignId, ownerUser = null) {
     const db = await getDb();
 
     try {
@@ -84,6 +94,7 @@ async function runScrapeJob(jobId, targetUrl, filters, campaignId) {
             nicheKeywords,
             onLog: console.log,
             campaignId,
+            ownerUser,
         });
 
         // Insertar prospectos en la DB
@@ -91,13 +102,15 @@ async function runScrapeJob(jobId, targetUrl, filters, campaignId) {
         for (const lead of leads) {
             try {
                 await db.execute({
-                    sql: `INSERT INTO prospects (username, full_name, biography, status, campaign_id)
-                          VALUES (?, ?, ?, 'pendiente', ?)
+                    sql: `INSERT INTO prospects (username, full_name, biography, status, campaign_id, owner_user)
+                          VALUES (?, ?, ?, 'listo', ?, ?)
                           ON CONFLICT(username) DO UPDATE SET
                           full_name = excluded.full_name,
                           biography = excluded.biography,
-                          campaign_id = CASE WHEN prospects.campaign_id IS NULL THEN excluded.campaign_id ELSE prospects.campaign_id END`,
-                    args: [lead.username, lead.full_name || "", lead.biography || "", campaignId || null]
+                          owner_user = excluded.owner_user,
+                          campaign_id = CASE WHEN prospects.campaign_id IS NULL THEN excluded.campaign_id ELSE prospects.campaign_id END,
+                          status = EXCLUDED.status`,
+                    args: [lead.username, lead.full_name || "", lead.biography || "", campaignId || null, ownerUser]
                 });
                 inserted++;
             } catch (e) {
