@@ -21,20 +21,20 @@ export default async function handler(req, res) {
         }
 
         const db = await getDb();
+        const cleanUsername = username.replace('@', '');
         
-        // Usar lógica compatible
+        // Usar lógica compatible con la nueva arquitectura session_data en bot_accounts
         const sqlQuery = db.isPostgres
-            ? `INSERT INTO bot_sessions (username, storage_state, updated_at)
-               VALUES ($1, $2, CURRENT_TIMESTAMP)
-               ON CONFLICT(username) DO UPDATE SET
-               storage_state = EXCLUDED.storage_state,
-               updated_at = CURRENT_TIMESTAMP`
-            : `INSERT OR REPLACE INTO bot_sessions (username, storage_state, updated_at)
-               VALUES (?, ?, CURRENT_TIMESTAMP)`;
+            ? `UPDATE bot_accounts SET session_data = $1, last_active = CURRENT_TIMESTAMP WHERE username = $2 OR username = $3`
+            : `UPDATE bot_accounts SET session_data = ?, last_active = CURRENT_TIMESTAMP WHERE username = ? OR username = ?`;
+
+        const args = db.isPostgres 
+            ? [session_json, cleanUsername, `@${cleanUsername}`]
+            : [session_json, cleanUsername, `@${cleanUsername}`];
 
         await db.execute({
             sql: sqlQuery,
-            args: [username, session_json]
+            args: args
         });
 
         return res.status(200).json({ success: true, message: "Sesión inyectada correctamente" });

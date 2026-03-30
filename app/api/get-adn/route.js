@@ -25,11 +25,10 @@ export async function GET(request) {
             return new NextResponse(`El bot '${botUsername}' no existe en la flota.`, { status: 404 });
         }
 
-        if (!result.rows[0].session_data) {
-            return new NextResponse(`El bot '${botUsername}' aún no tiene una sesión guardada. Iniciá sesión en el panel primero.`, { status: 404 });
-        }
+        const data = result.rows[0].session_data;
+        const jsonString = typeof data === 'string' ? data : JSON.stringify(data);
 
-        return new NextResponse(result.rows[0].session_data, {
+        return new NextResponse(jsonString, {
             headers: { 'Content-Type': 'application/json' }
         });
     } catch(err) {
