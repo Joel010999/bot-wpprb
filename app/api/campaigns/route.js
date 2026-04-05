@@ -125,7 +125,7 @@ export async function PUT(request) {
             args: [status, id]
         });
 
-        // Gatillar campaña en background cuando se activa
+        // Gatillar campaña en background cuando se activassisiissisisisi
         if (status === 'active') {
             triggerCampaignAction(id, currentUser).catch(console.error);
         }
