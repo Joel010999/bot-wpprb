@@ -14,12 +14,12 @@ export async function GET(request) {
         }
 
         const db = await getDb();
-        const pendingCountQuery = db.isPostgres ? "campaign_id = c.id::text" : "campaign_id = c.id";
+        const pendingCountQuery = db.isPostgres ? "campaign_id::text = c.id::text" : "campaign_id = c.id";
 
         const isAdmin = currentUser === 'admin_joel';
         let sql = `
             SELECT c.*, 
-                   (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'listo') AS pending_count 
+                    (SELECT COUNT(*) FROM prospects WHERE ${pendingCountQuery} AND status = 'listo') AS pending_count 
             FROM campaigns c
         `;
         let args = [];
@@ -107,8 +107,8 @@ export async function PUT(request) {
 
         // Verificamos propiedad de la campaña
         const checkOwnership = await db.execute({
-            sql: `SELECT owner_user FROM campaigns WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-            args: [id]
+            sql: `SELECT owner_user FROM campaigns WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+            args: [id.toString()]
         });
 
         const campaign = checkOwnership.rows[0];
@@ -121,11 +121,11 @@ export async function PUT(request) {
         }
 
         await db.execute({
-            sql: `UPDATE campaigns SET status = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-            args: [status, id]
+            sql: `UPDATE campaigns SET status = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+            args: [status, id.toString()]
         });
 
-        // Gatillar campaña en background cuando se activassisiissisisisi
+        // Gatillar campaña en background cuando se activa
         if (status === 'active') {
             triggerCampaignAction(id, currentUser).catch(console.error);
         }
@@ -144,8 +144,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
     try {
         // Obtener detalles de la campaña
         const campaignRes = await db.execute({
-            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id = ${db.isPostgres ? 'c.id::text' : 'c.id'} AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id = ${db.isPostgres ? '?::text' : '?'}`,
-            args: [campaignId]
+            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id::text = c.id::text AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id::text = ${db.isPostgres ? '?::text' : '?'}`,
+            args: [campaignId.toString()]
         });
         const campaign = campaignRes.rows[0];
         if (!campaign) return;
@@ -162,8 +162,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         if (!bot) {
             console.log(`[CAMPAIGN ERROR] No hay bots activos asignados para el usuario: ${effectiveUser}`);
             await db.execute({
-                sql: `UPDATE campaigns SET status='paused', status_message='No tenés un bot asignado o activo' WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                args: [campaign.id]
+                sql: `UPDATE campaigns SET status='paused', status_message='No tenés un bot asignado o activo' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                args: [campaign.id.toString()]
             });
             return;
         }
@@ -188,8 +188,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 if (!campaign.target_source) {
                     console.log(`[CAMPAIGN TRIGGER] Sin prospectos pendientes y sin target_source. Pausando.`);
                     await db.execute({
-                        sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: ["Pausada — Sin prospectos en cola y sin fuente de búsqueda configurada", campaignId]
+                        sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                        args: ["Pausada — Sin prospectos en cola y sin fuente de búsqueda configurada", campaignId.toString()]
                     });
                     await browser.close();
                     return;
@@ -198,8 +198,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 const targetAccount = campaign.target_source.replace(/^@/, "").trim();
                 console.log(`[CAMPAIGN TRIGGER] < 10 prospectos. Iniciando fase recolección (Scrape) de seguidores de @${targetAccount}...`);
                 await db.execute({
-                    sql: `UPDATE campaigns SET status_message = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                    args: [`Scrapeando seguidores de @${targetAccount}...`, campaignId]
+                    sql: `UPDATE campaigns SET status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                    args: [`Scrapeando seguidores de @${targetAccount}...`, campaignId.toString()]
                 });
 
                 const { scrapeFollowersFromPage } = await import("@/lib/scraper");
@@ -233,7 +233,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                                   owner_user = excluded.owner_user,
                                   campaign_id = CASE WHEN prospects.campaign_id IS NULL THEN excluded.campaign_id ELSE prospects.campaign_id END,
                                   status = EXCLUDED.status`,
-                            args: [lead.username, lead.full_name || "", lead.biography || "", campaignId, effectiveUser]
+                            args: [lead.username, lead.full_name || "", lead.biography || "", campaignId.toString(), effectiveUser]
                         });
                         inserted++;
                         console.log(`[DATABASE] Lead @${lead.username} guardado con éxito.`);
@@ -245,8 +245,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 if (inserted === 0) {
                     console.log(`[CAMPAIGN TRIGGER] Scrape completado pero 0 leads calificados.`);
                     await db.execute({
-                        sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: [`Buscando leads... 0 encontrados en @${targetAccount}. Reintentando en 5 minutos`, campaignId]
+                        sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                        args: [`Buscando leads... 0 encontrados en @${targetAccount}. Reintentando en 5 minutos`, campaignId.toString()]
                     });
                     await browser.close();
                     return;
@@ -254,8 +254,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                 console.log(`[CAMPAIGN TRIGGER] ✅ ${inserted} leads scrapeados e insertados. Encadenando DMs en el mismo browser...`);
                 await db.execute({
-                    sql: `UPDATE campaigns SET status_message = ?, leads_found = leads_found + ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                    args: [`${inserted} leads encontrados. Iniciando DMs...`, inserted, campaignId]
+                    sql: `UPDATE campaigns SET status_message = ?, leads_found = leads_found + ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                    args: [`${inserted} leads encontrados. Iniciando DMs...`, inserted, campaignId.toString()]
                 });
 
                 // Pausa humana antes de DMs (30-60s — más corta, no cerramos el browser)
@@ -266,8 +266,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
             // ── FASE 2: ENVÍO DE DMs (misma sesión, mismo browser) ──
             await db.execute({
-                sql: `UPDATE campaigns SET status_message = 'Procesando DMs...' WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                args: [campaignId]
+                sql: `UPDATE campaigns SET status_message = 'Procesando DMs...' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                args: [campaignId.toString()]
             });
 
             const page = await context.newPage();
@@ -275,41 +275,33 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
             while (dmsSentToday < campaign.daily_limit) {
                 // Chequear si la campaña sigue activa
-                const checkCamp = await db.execute({ sql: `SELECT status FROM campaigns WHERE id = ${db.isPostgres ? '?::text' : '?'}`, args: [campaignId] });
+                const checkCamp = await db.execute({ sql: `SELECT status FROM campaigns WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`, args: [campaignId.toString()] });
                 if (checkCamp.rows[0]?.status !== 'active') {
                     console.log("[CAMPAIGN] Campaña pausada remotamente. Deteniendo bucle.");
                     break;
                 }
 
-                // Buscar un prospecto: 
-                // 1. Pendientes (nuevos)
-                // 2. Contactados que no han sido revisados hace más de 15 minutos
+                // Buscar un prospecto
                 let prospect;
                 try {
-                    const sqlQuery = db.isPostgres
-                        ? `SELECT * FROM prospects 
-                           WHERE status = 'listo'
-                           AND campaign_id = ?::text 
-                           AND owner_user = ?
-                           ORDER BY id ASC LIMIT 1`
-                        : `SELECT * FROM prospects 
-                           WHERE status = 'listo'
-                           AND campaign_id = ? 
-                           AND owner_user = ?
-                           ORDER BY id ASC LIMIT 1`;
+                    const sqlQuery = `SELECT * FROM prospects 
+                                       WHERE status = 'listo'
+                                       AND campaign_id::text = ?::text 
+                                       AND owner_user = ?
+                                       ORDER BY id ASC LIMIT 1`;
 
                     const prospectRes = await db.execute({
                         sql: sqlQuery,
-                        args: [campaignId, effectiveUser]
+                        args: [campaignId.toString(), effectiveUser]
                     });
                     prospect = prospectRes.rows[0];
                 } catch (dbErr) {
                     console.error("[CAMPAIGN ERROR] Fallo al consultar prospectos:", dbErr.message);
                     await db.execute({
-                        sql: `UPDATE campaigns SET status_message = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: [`Error de DB: ${dbErr.message}. Verifica migraciones.`, campaignId]
+                        sql: `UPDATE campaigns SET status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                        args: [`Error de DB: ${dbErr.message}. Verifica migraciones.`, campaignId.toString()]
                     });
-                    break; // Salir del bucle para no inundar el log
+                    break;
                 }
 
                 if (!prospect) {
@@ -320,8 +312,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 try {
                     // Marcar como revisado ahora mismo
                     await db.execute({
-                        sql: `UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                        args: [parseInt(prospect.id)]
+                        sql: `UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                        args: [prospect.id.toString()]
                     });
 
                     console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
@@ -333,7 +325,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     // ── Sincronizar Historial en DB ──
                     if (dmResult.chatHistory && dmResult.chatHistory.length > 0) {
-                        // Buscar o crear lead en tabla leads para linkear mensajes
                         let leadId = null;
                         try {
                             const leadCheck = await db.execute({
@@ -345,22 +336,20 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                             } else {
                                 const newLeadRes = await db.execute({
                                     sql: `INSERT INTO leads (ig_handle, bio_data, status, campaign_id) VALUES (?, ?, 'contacted', ?) RETURNING id`,
-                                    args: [prospect.username, prospect.biography || "", campaignId]
+                                    args: [prospect.username, prospect.biography || "", campaignId.toString()]
                                 });
                                 leadId = newLeadRes.rows[0]?.id || null;
                             }
 
                             if (leadId) {
-                                // Guardar todos los mensajes que no existan aún
-                                const parsedLeadId = parseInt(leadId);
                                 for (const msg of dmResult.chatHistory) {
                                     await db.execute({
                                         sql: `INSERT INTO messages (lead_id, bot_account_id, content, role)
-                                              SELECT ${db.isPostgres ? '?::integer' : '?'}, ?, ?, ?
+                                              SELECT ${db.isPostgres ? '?::text' : '?'}, ?, ?, ?
                                               WHERE NOT EXISTS (
-                                                  SELECT 1 FROM messages WHERE lead_id = ${db.isPostgres ? '?::integer' : '?'} AND content = ? AND role = ?
+                                                  SELECT 1 FROM messages WHERE lead_id::text = ${db.isPostgres ? '?::text' : '?'} AND content = ? AND role = ?
                                               )`,
-                                        args: [parsedLeadId, bot.id, msg.content, msg.role, parsedLeadId, msg.content, msg.role]
+                                        args: [leadId.toString(), bot.id, msg.content, msg.role, leadId.toString(), msg.content, msg.role]
                                     });
                                 }
                             }
@@ -371,25 +360,25 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     if (dmResult.sent && dmResult.verified) {
                         await db.execute({
-                            sql: `UPDATE prospects SET status = 'finalizado' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                            args: [parseInt(prospect.id)]
+                            sql: `UPDATE prospects SET status = 'finalizado' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [prospect.id.toString()]
                         });
                         dmsSentToday++;
                         console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${campaign.daily_limit})`);
 
                         await db.execute({
-                            sql: `UPDATE campaigns SET dms_sent = dms_sent + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                            args: [campaignId]
+                            sql: `UPDATE campaigns SET dms_sent = dms_sent + 1 WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [campaignId.toString()]
                         });
                         await db.execute({
-                            sql: `UPDATE bot_accounts SET daily_dm_count = daily_dm_count + 1 WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
-                            args: [bot.id]
+                            sql: `UPDATE bot_accounts SET daily_dm_count = daily_dm_count + 1 WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [bot.id.toString()]
                         });
                     } else {
                         console.log(`[CAMPAIGN] Fallo DM para @${prospect.username}. Marcar como error.`);
                         await db.execute({
-                            sql: `UPDATE prospects SET status = 'error' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                            args: [parseInt(prospect.id)]
+                            sql: `UPDATE prospects SET status = 'error' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                            args: [prospect.id.toString()]
                         });
 
                         if (dmResult.error === "Bloqueo en Engagement") {
@@ -400,12 +389,11 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 } catch (processErr) {
                     console.error(`[CAMPAIGN ERROR] Fallo procesando prospecto @${prospect.username}:`, processErr.message);
                     await db.execute({
-                        sql: `UPDATE prospects SET status = 'error' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                        args: [parseInt(prospect.id)]
+                        sql: `UPDATE prospects SET status = 'error' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                        args: [prospect.id.toString()]
                     }).catch(() => { });
                 }
 
-                // Pausa entre prospectos (15-30 segundos - MODO ULTRA-RÁPIDO)
                 const pauseMs = Math.floor(Math.random() * 15000) + 15000;
                 console.log(`[CAMPAIGN (ULTRA-RÁPIDO)] Esperando ${Math.round(pauseMs / 1000)}s antes del próximo prospecto...`);
                 await page.waitForTimeout(pauseMs);
@@ -414,7 +402,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
             console.log(`[CAMPAIGN] Bucle finalizado. Total DMs hoy: ${dmsSentToday}`);
 
         } finally {
-            // Guardar sesión y cerrar browser al finalizar TODO el flujo
             await saveSession(bot.username, context).catch(() => { });
             await browser.close();
         }

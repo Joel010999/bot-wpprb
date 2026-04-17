@@ -12,9 +12,9 @@ export async function GET(request) {
 
         if (type === "leads") {
             let sql = `SELECT l.*, 
-                        (SELECT content FROM messages WHERE lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''} ORDER BY sent_at DESC LIMIT 1) AS last_message,
-                        (SELECT COUNT(*) FROM messages WHERE lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''}) AS message_count,
-                        (SELECT owner_user FROM campaigns WHERE id${db.isPostgres ? '::text' : ''} = l.campaign_id${db.isPostgres ? '::text' : ''}) AS owner_user
+                        (SELECT content FROM messages WHERE lead_id::text = l.id::text ORDER BY sent_at DESC LIMIT 1) AS last_message,
+                        (SELECT COUNT(*) FROM messages WHERE lead_id::text = l.id::text) AS message_count,
+                        (SELECT owner_user FROM campaigns WHERE id::text = l.campaign_id::text) AS owner_user
                        FROM leads l`;
 
             const session = request.cookies.get('rle_session');
@@ -30,22 +30,19 @@ export async function GET(request) {
             if (currentUser && !isAdmin) {
                 whereClauses.push(`EXISTS (
                     SELECT 1 FROM messages m 
-                    JOIN bot_accounts b ON m.bot_account_id = b.id 
-                    WHERE m.lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''} 
-                    AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
+                    JOIN bot_accounts b ON m.bot_account_id::text = b.id::text 
+                    WHERE m.lead_id::text = l.id::text 
+                    AND b.owner_user = ?
                 )`);
                 args.push(currentUser);
             }
             if (statusStr) {
-                whereClauses.push(`l.status = ${db.isPostgres ? '?::text' : '?'}`);
+                whereClauses.push(`l.status = ?`);
                 args.push(statusStr);
             }
 
-            if (whereClauses.length > 0) {
-                sql += " WHERE " + whereClauses.join(" AND ");
-            }
-
-            sql += " ORDER BY l.created_at DESC LIMIT ?";
+            if (whereClauses.length > 0) sql += " WHERE " + whereClauses.join(" AND ");
+            sql += ` ORDER BY l.created_at DESC LIMIT ${db.isPostgres ? '?::integer' : '?'}`;
             args.push(limit);
 
             const result = await db.execute({ sql, args });
@@ -64,19 +61,16 @@ export async function GET(request) {
 
             let whereClauses = [];
             if (currentUser && !isAdmin) {
-                whereClauses.push(`(owner_user = ${db.isPostgres ? '?::text' : '?'} OR campaign_id${db.isPostgres ? '::text' : ''} IN (SELECT id${db.isPostgres ? '::text' : ''} FROM campaigns WHERE owner_user = ${db.isPostgres ? '?::text' : '?'}))`);
+                whereClauses.push(`(owner_user = ? OR campaign_id::text IN (SELECT id::text FROM campaigns WHERE owner_user = ?))`);
                 args.push(currentUser, currentUser);
             }
             if (statusStr) {
-                whereClauses.push(`status = ${db.isPostgres ? '?::text' : '?'}`);
+                whereClauses.push(`status = ?`);
                 args.push(statusStr);
             }
 
-            if (whereClauses.length > 0) {
-                query += " WHERE " + whereClauses.join(" AND ");
-            }
-
-            query += " ORDER BY created_at DESC LIMIT ?";
+            if (whereClauses.length > 0) query += " WHERE " + whereClauses.join(" AND ");
+            query += ` ORDER BY created_at DESC LIMIT ${db.isPostgres ? '?::integer' : '?'}`;
             args.push(limit);
 
             const result = await db.execute({ sql: query, args });
@@ -84,7 +78,7 @@ export async function GET(request) {
         }
     } catch (err) {
         console.error("[PROSPECTS GET] Error:", err);
-        return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 });
+        return NextResponse.json({ error: "Error interno" }, { status: 500 });
     }
 }
 
@@ -92,65 +86,39 @@ export async function POST(request) {
     try {
         const body = await request.json();
         const { username, full_name, biography, status } = body;
-
-        if (!username) {
-            return NextResponse.json({ error: "El username es obligatorio" }, { status: 400 });
-        }
-
-        const cleanUsername = username.replace(/^@/, "").trim().toLowerCase();
-        const initialStatus = status || 'listo';
-
+        const cleanUsername = username?.replace(/^@/, "").trim().toLowerCase();
         const session = request.cookies.get('rle_session');
-        let currentUser = null;
-        if (session && session.value.startsWith('authenticated_')) {
-            currentUser = session.value.replace('authenticated_', '');
-        }
+        const currentUser = session?.value.replace('authenticated_', '') || null;
 
         const db = await getDb();
-
         await db.execute({
             sql: `INSERT INTO prospects (username, full_name, biography, status, owner_user)
                   VALUES (?, ?, ?, ?, ?)
                   ON CONFLICT(username) DO UPDATE SET
-                  full_name = excluded.full_name,
-                  biography = excluded.biography,
-                  status = CASE WHEN prospects.status = 'listo' THEN excluded.status ELSE prospects.status END`,
-            args: [cleanUsername, full_name || "", biography || "", initialStatus, currentUser]
+                  full_name = excluded.full_name, biography = excluded.biography`,
+            args: [cleanUsername, full_name || "", biography || "", status || 'listo', currentUser]
         });
-
-        return NextResponse.json({ success: true, message: `Prospecto @${cleanUsername} guardado.` });
-    } catch (err) {
-        console.error("[PROSPECTS POST] Error:", err);
-        return NextResponse.json({ error: "Error interno al guardar prospecto" }, { status: 500 });
-    }
+        return NextResponse.json({ success: true });
+    } catch (err) { return NextResponse.json({ error: "Error" }, { status: 500 }); }
 }
 
 export async function PATCH(request) {
     try {
         const body = await request.json();
         const { lead_id, prospect_id, automation_paused, status } = body;
-
         const db = await getDb();
 
         if (lead_id) {
             await db.execute({
-                sql: `UPDATE leads SET automation_paused = ? WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                args: [automation_paused ? 1 : 0, parseInt(lead_id)]
+                sql: `UPDATE leads SET automation_paused = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                args: [automation_paused ? 1 : 0, lead_id.toString()]
             });
-            return NextResponse.json({ success: true });
         } else if (prospect_id) {
-            if (status) {
-                await db.execute({
-                    sql: `UPDATE prospects SET status = ? WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
-                    args: [status, parseInt(prospect_id)]
-                });
-            }
-            return NextResponse.json({ success: true });
+            await db.execute({
+                sql: `UPDATE prospects SET status = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
+                args: [status, prospect_id.toString()]
+            });
         }
-
-        return NextResponse.json({ error: "ID no proporcionado" }, { status: 400 });
-    } catch (err) {
-        console.error("[PROSPECTS PATCH] Error:", err);
-        return NextResponse.json({ error: "Error interno" }, { status: 500 });
-    }
+        return NextResponse.json({ success: true });
+    } catch (err) { return NextResponse.json({ error: "Error" }, { status: 500 }); }
 }
