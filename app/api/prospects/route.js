@@ -26,6 +26,7 @@ export async function GET(request) {
 
             const isAdmin = currentUser === 'admin_joel';
 
+            let args = [];
             let whereClauses = [];
             if (currentUser && !isAdmin) {
                 whereClauses.push(`EXISTS (
