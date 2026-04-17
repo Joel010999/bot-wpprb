@@ -26,8 +26,8 @@ export async function GET(request) {
         const checkLeadAccess = await db.execute({
             sql: `SELECT 1 FROM messages m
                   JOIN bot_accounts b ON m.bot_account_id = b.id
-                  WHERE m.lead_id = ${db.isPostgres ? '?::text' : '?'} AND b.owner_user = ${db.isPostgres ? '?::text' : '?'} LIMIT 1`,
-            args: [leadId, currentUser]
+                  WHERE m.lead_id = ${db.isPostgres ? '?::integer' : '?'} AND b.owner_user = ${db.isPostgres ? '?::text' : '?'} LIMIT 1`,
+            args: [parseInt(leadId), currentUser]
         });
 
         // Fallback: Si no tiene mensajes aún, verificar por owner de la campaña asociada al lead
@@ -36,8 +36,8 @@ export async function GET(request) {
             const checkCampAccess = await db.execute({
                 sql: `SELECT 1 FROM leads l
                       JOIN campaigns c ON l.campaign_id = c.id
-                      WHERE l.id = ${db.isPostgres ? '?::text' : '?'} AND c.owner_user = ${db.isPostgres ? '?::text' : '?'} LIMIT 1`,
-                args: [leadId, currentUser]
+                      WHERE l.id = ${db.isPostgres ? '?::integer' : '?'} AND c.owner_user = ${db.isPostgres ? '?::text' : '?'} LIMIT 1`,
+                args: [parseInt(leadId), currentUser]
             });
             hasAccess = checkCampAccess.rows.length > 0;
         }
@@ -47,8 +47,8 @@ export async function GET(request) {
         }
 
         const result = await db.execute({
-            sql: `SELECT * FROM messages WHERE lead_id = ${db.isPostgres ? '?::text' : '?'} ORDER BY sent_at ASC`,
-            args: [leadId]
+            sql: `SELECT * FROM messages WHERE lead_id = ${db.isPostgres ? '?::integer' : '?'} ORDER BY sent_at ASC`,
+            args: [parseInt(leadId)]
         });
 
         return NextResponse.json({ messages: result.rows });
@@ -73,15 +73,15 @@ export async function POST(request) {
         let botId = bot_account_id;
         if (!botId) {
             const lastMsg = await db.execute({
-                sql: `SELECT bot_account_id FROM messages WHERE lead_id = ${db.isPostgres ? '?::text' : '?'} AND bot_account_id IS NOT NULL ORDER BY sent_at DESC LIMIT 1`,
-                args: [lead_id]
+                sql: `SELECT bot_account_id FROM messages WHERE lead_id = ${db.isPostgres ? '?::integer' : '?'} AND bot_account_id IS NOT NULL ORDER BY sent_at DESC LIMIT 1`,
+                args: [parseInt(lead_id)]
             });
             botId = lastMsg.rows[0]?.bot_account_id || null;
         }
 
         await db.execute({
             sql: "INSERT INTO messages (lead_id, bot_account_id, content, role) VALUES (?, ?, ?, ?)",
-            args: [lead_id, botId, content, role]
+            args: [parseInt(lead_id), botId, content, role]
         });
 
         return NextResponse.json({ success: true, message: "Mensaje guardado." });

@@ -13,8 +13,8 @@ export async function GET(request) {
         if (type === "leads") {
             // CAST: l.id::text para que coincida con lead_id si es TEXT
             let sql = `SELECT l.*, 
-                        (SELECT content FROM messages WHERE lead_id = l.id${db.isPostgres ? '::text' : ''} ORDER BY sent_at DESC LIMIT 1) AS last_message,
-                        (SELECT COUNT(*) FROM messages WHERE lead_id = l.id${db.isPostgres ? '::text' : ''}) AS message_count,
+                        (SELECT content FROM messages WHERE lead_id = l.id ORDER BY sent_at DESC LIMIT 1) AS last_message,
+                        (SELECT COUNT(*) FROM messages WHERE lead_id = l.id) AS message_count,
                         (SELECT owner_user FROM campaigns WHERE id = l.campaign_id) AS owner_user
                        FROM leads l`;
 
@@ -33,7 +33,7 @@ export async function GET(request) {
                 whereClauses.push(`EXISTS (
                     SELECT 1 FROM messages m 
                     JOIN bot_accounts b ON m.bot_account_id = b.id 
-                    WHERE m.lead_id = l.id${db.isPostgres ? '::text' : ''} AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
+                    WHERE m.lead_id = l.id AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
                 )`);
                 args.push(currentUser);
             }

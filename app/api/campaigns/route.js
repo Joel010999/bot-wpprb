@@ -320,8 +320,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 try {
                     // Marcar como revisado ahora mismo
                     await db.execute({
-                        sql: "UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ?",
-                        args: [prospect.id]
+                        sql: `UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
+                        args: [parseInt(prospect.id)]
                     });
 
                     console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
@@ -370,8 +370,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     if (dmResult.sent && dmResult.verified) {
                         await db.execute({
-                            sql: "UPDATE prospects SET status = 'finalizado' WHERE id = ?",
-                            args: [prospect.id]
+                            sql: `UPDATE prospects SET status = 'finalizado' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
+                            args: [parseInt(prospect.id)]
                         });
                         dmsSentToday++;
                         console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${campaign.daily_limit})`);
@@ -387,8 +387,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     } else {
                         console.log(`[CAMPAIGN] Fallo DM para @${prospect.username}. Marcar como error.`);
                         await db.execute({
-                            sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
-                            args: [prospect.id]
+                            sql: `UPDATE prospects SET status = 'error' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
+                            args: [parseInt(prospect.id)]
                         });
 
                         if (dmResult.error === "Bloqueo en Engagement") {
@@ -399,8 +399,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 } catch (processErr) {
                     console.error(`[CAMPAIGN ERROR] Fallo procesando prospecto @${prospect.username}:`, processErr.message);
                     await db.execute({
-                        sql: "UPDATE prospects SET status = 'error' WHERE id = ?",
-                        args: [prospect.id]
+                        sql: `UPDATE prospects SET status = 'error' WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
+                        args: [parseInt(prospect.id)]
                     }).catch(() => { });
                 }
 
