@@ -352,14 +352,15 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                             if (leadId) {
                                 // Guardar todos los mensajes que no existan aún
+                                const parsedLeadId = parseInt(leadId);
                                 for (const msg of dmResult.chatHistory) {
                                     await db.execute({
                                         sql: `INSERT INTO messages (lead_id, bot_account_id, content, role)
-                                              SELECT ?, ?, ?, ?
+                                              SELECT ${db.isPostgres ? '?::integer' : '?'}, ?, ?, ?
                                               WHERE NOT EXISTS (
-                                                  SELECT 1 FROM messages WHERE lead_id = ? AND content = ? AND role = ?
+                                                  SELECT 1 FROM messages WHERE lead_id = ${db.isPostgres ? '?::integer' : '?'} AND content = ? AND role = ?
                                               )`,
-                                        args: [leadId, bot.id, msg.content, msg.role, leadId, msg.content, msg.role]
+                                        args: [parsedLeadId, bot.id, msg.content, msg.role, parsedLeadId, msg.content, msg.role]
                                     });
                                 }
                             }
