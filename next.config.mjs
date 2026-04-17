@@ -5,9 +5,6 @@ const nextConfig = {
     buildActivity: false,
     appIsrStatus: false,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 };
 
 export default nextConfig;
