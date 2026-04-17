@@ -32,12 +32,12 @@ export async function GET(request) {
                 whereClauses.push(`EXISTS (
                     SELECT 1 FROM messages m 
                     JOIN bot_accounts b ON m.bot_account_id = b.id 
-                    WHERE m.lead_id = l.id AND b.owner_user = ?
+                    WHERE m.lead_id = l.id AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
                 )`);
                 args.push(currentUser);
             }
             if (statusStr) {
-                whereClauses.push("l.status = ?");
+                whereClauses.push(`l.status = ${db.isPostgres ? '?::text' : '?'}`);
                 args.push(statusStr);
             }
 
@@ -65,11 +65,11 @@ export async function GET(request) {
 
             let whereClauses = [];
             if (currentUser && !isAdmin) {
-                whereClauses.push(`(owner_user = ? OR campaign_id IN (SELECT id FROM campaigns WHERE owner_user = ?))`);
+                whereClauses.push(`(owner_user = ${db.isPostgres ? '?::text' : '?'} OR campaign_id IN (SELECT id FROM campaigns WHERE owner_user = ${db.isPostgres ? '?::text' : '?'}))`);
                 args.push(currentUser, currentUser);
             }
             if (statusStr) {
-                whereClauses.push("status = ?");
+                whereClauses.push(`status = ${db.isPostgres ? '?::text' : '?'}`);
                 args.push(statusStr);
             }
 
@@ -136,7 +136,7 @@ export async function PATCH(request) {
         if (lead_id) {
             // Actualizar Lead
             await db.execute({
-                sql: "UPDATE leads SET automation_paused = ? WHERE id = ?",
+                sql: `UPDATE leads SET automation_paused = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
                 args: [automation_paused ? 1 : 0, lead_id]
             });
             return NextResponse.json({ success: true });
@@ -144,7 +144,7 @@ export async function PATCH(request) {
             // Actualizar Prospecto
             if (status) {
                 await db.execute({
-                    sql: "UPDATE prospects SET status = ? WHERE id = ?",
+                    sql: `UPDATE prospects SET status = ? WHERE id = ${db.isPostgres ? '?::text' : '?'}`,
                     args: [status, prospect_id]
                 });
             }
