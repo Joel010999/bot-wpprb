@@ -20,6 +20,8 @@ export async function GET(request) {
 
             const session = request.cookies.get('rle_session');
             let currentUser = null;
+
+
             if (session && session.value.startsWith('authenticated_')) {
                 currentUser = session.value.replace('authenticated_', '');
             }
