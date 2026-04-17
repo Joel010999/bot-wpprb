@@ -325,6 +325,12 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                         campaignContext: campaign.niche_context
                     });
 
+
+
+
+
+
+
                     let dmResult = await sendAndVerifyDM(page, prospect.username, {
                         bio: prospect.biography,
                         config: { niche_context: campaign.niche_context },
