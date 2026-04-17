@@ -318,9 +318,17 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
 
+                    const { generateOpener } = await import("@/lib/openai");
+                    const aiMessage = await generateOpener(prospect.biography, prospect.username, {
+                        niche_context: campaign.niche_context,
+                        campaignNiche: campaign.niche,
+                        campaignContext: campaign.niche_context
+                    });
+
                     let dmResult = await sendAndVerifyDM(page, prospect.username, {
                         bio: prospect.biography,
-                        config: { niche_context: campaign.niche_context }
+                        config: { niche_context: campaign.niche_context },
+                        message: aiMessage
                     }, console.log);
 
                     // ── Sincronizar Historial en DB ──
