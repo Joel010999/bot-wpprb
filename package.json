@@ -8,7 +8,7 @@
     "dev:fresh": "npm run clean && next dev",
     "clean": "taskkill /F /IM node.exe >nul 2>&1 & if exist .next\\dev\\lock del /F .next\\dev\\lock & echo Limpieza completa",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-8080} -H 0.0.0.0",
     "lint": "eslint"
   },
   "dependencies": {
