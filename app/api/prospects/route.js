@@ -11,17 +11,14 @@ export async function GET(request) {
         const db = await getDb();
 
         if (type === "leads") {
-            // CAST: l.id::text para que coincida con lead_id si es TEXT
             let sql = `SELECT l.*, 
-                        (SELECT content FROM messages WHERE lead_id = l.id ORDER BY sent_at DESC LIMIT 1) AS last_message,
-                        (SELECT COUNT(*) FROM messages WHERE lead_id = l.id) AS message_count,
-                        (SELECT owner_user FROM campaigns WHERE id = l.campaign_id) AS owner_user
+                        (SELECT content FROM messages WHERE lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''} ORDER BY sent_at DESC LIMIT 1) AS last_message,
+                        (SELECT COUNT(*) FROM messages WHERE lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''}) AS message_count,
+                        (SELECT owner_user FROM campaigns WHERE id${db.isPostgres ? '::text' : ''} = l.campaign_id${db.isPostgres ? '::text' : ''}) AS owner_user
                        FROM leads l`;
 
             const session = request.cookies.get('rle_session');
             let currentUser = null;
-
-
             if (session && session.value.startsWith('authenticated_')) {
                 currentUser = session.value.replace('authenticated_', '');
             }
@@ -31,11 +28,11 @@ export async function GET(request) {
             let args = [];
             let whereClauses = [];
             if (currentUser && !isAdmin) {
-                // CAST: l.id::text en el JOIN interno
                 whereClauses.push(`EXISTS (
                     SELECT 1 FROM messages m 
                     JOIN bot_accounts b ON m.bot_account_id = b.id 
-                    WHERE m.lead_id = l.id AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
+                    WHERE m.lead_id${db.isPostgres ? '::text' : ''} = l.id${db.isPostgres ? '::text' : ''} 
+                    AND b.owner_user = ${db.isPostgres ? '?::text' : '?'}
                 )`);
                 args.push(currentUser);
             }
@@ -67,7 +64,7 @@ export async function GET(request) {
 
             let whereClauses = [];
             if (currentUser && !isAdmin) {
-                whereClauses.push(`(owner_user = ${db.isPostgres ? '?::text' : '?'} OR campaign_id IN (SELECT id FROM campaigns WHERE owner_user = ${db.isPostgres ? '?::text' : '?'}))`);
+                whereClauses.push(`(owner_user = ${db.isPostgres ? '?::text' : '?'} OR campaign_id${db.isPostgres ? '::text' : ''} IN (SELECT id${db.isPostgres ? '::text' : ''} FROM campaigns WHERE owner_user = ${db.isPostgres ? '?::text' : '?'}))`);
                 args.push(currentUser, currentUser);
             }
             if (statusStr) {
@@ -137,7 +134,6 @@ export async function PATCH(request) {
 
         if (lead_id) {
             await db.execute({
-                // CAST lead_id a string si es necesario y automation_paused como número
                 sql: `UPDATE leads SET automation_paused = ? WHERE id = ${db.isPostgres ? '?::integer' : '?'}`,
                 args: [automation_paused ? 1 : 0, parseInt(lead_id)]
             });
