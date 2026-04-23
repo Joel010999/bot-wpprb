@@ -25,7 +25,6 @@ export async function GET(request) {
         let args = [];
 
         if (!isAdmin) {
-            // FIX: Ignoramos mayúsculas y espacios invisibles
             sql += ` WHERE LOWER(TRIM(c.owner_user)) = LOWER(TRIM(?))`;
             args.push(currentUser);
         }
@@ -44,7 +43,8 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const body = await request.json();
-        const { name, niche, target_source, daily_limit, niche_context, search_keyword } = body;
+        // NUEVO: Agregamos scrape_type a la recepción de datos
+        const { name, niche, target_source, scrape_type, daily_limit, niche_context, search_keyword } = body;
 
         if (!name) {
             return NextResponse.json({ error: "El nombre de la campaña es obligatorio" }, { status: 400 });
@@ -63,14 +63,16 @@ export async function POST(request) {
         const db = await getDb();
         const campaignId = crypto.randomUUID().replace(/-/g, "").substring(0, 32);
 
+        // NUEVO: Agregamos scrape_type a la consulta SQL
         await db.execute({
-            sql: `INSERT INTO campaigns (id, name, niche, target_source, daily_limit, niche_context, search_keyword, owner_user)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            sql: `INSERT INTO campaigns (id, name, niche, target_source, scrape_type, daily_limit, niche_context, search_keyword, owner_user)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             args: [
                 campaignId,
                 name,
                 niche || "",
                 target_source || "",
+                scrape_type || "followers", // Por defecto seguidores
                 daily_limit || 20,
                 niche_context || "",
                 search_keyword || "",
@@ -148,7 +150,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         const campaign = campaignRes.rows[0];
         if (!campaign) return;
 
-        // BUGS CORREGIDOS ACÁ: Forzamos parseo estricto a números para evitar problemas con PostgreSQL String Counts
         const pendingCount = parseInt(campaign.pending_count, 10) || 0;
         const dailyLimit = parseInt(campaign.daily_limit, 10) || 20;
 
@@ -194,11 +195,10 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     return;
                 }
 
-                // Cálculo con variables puramente numéricas
                 const neededLeads = dailyLimit - pendingCount;
                 const targetAccount = campaign.target_source.replace(/^@/, "").trim();
 
-                console.log(`[CAMPAIGN TRIGGER] Faltan ${neededLeads} prospectos. Iniciando recolección de seguidores de @${targetAccount}...`);
+                console.log(`[CAMPAIGN TRIGGER] Faltan ${neededLeads} prospectos. Iniciando recolección de @${targetAccount}...`);
                 await db.execute({
                     sql: `UPDATE campaigns SET status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
                     args: [`Scrapeando para conseguir ${neededLeads} leads nuevos en @${targetAccount}...`, campaignId.toString()]
@@ -215,6 +215,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     maxLeads: neededLeads,
                     nicheKeywords,
                     searchKeyword: campaign.search_keyword || "",
+                    scrapeType: campaign.scrape_type || "followers", // NUEVO: Pasamos la opción al scraper
                     onLog: console.log,
                     campaignId,
                     ownerUser: effectiveUser,
@@ -253,7 +254,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     return;
                 }
 
-                // Suma matemática correcta
                 const totalReady = pendingCount + inserted;
                 console.log(`[CAMPAIGN TRIGGER] ✅ Tenemos un total de ${totalReady} leads listos. Encadenando DMs...`);
                 await db.execute({
@@ -276,13 +276,12 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
             let dmsSentToday = 0;
 
             while (dmsSentToday < dailyLimit) {
-                // Chequeo estricto del estado de la campaña en DB ignorando mayúsculas
                 const checkCamp = await db.execute({ sql: `SELECT status FROM campaigns WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`, args: [campaignId.toString()] });
                 const currentStatus = (checkCamp.rows[0]?.status || '').toLowerCase();
 
                 if (currentStatus !== 'active') {
                     console.log("[CAMPAIGN] Campaña pausada remotamente. Deteniendo bucle.");
-                    break; // Acá fue donde abortó en tu prueba
+                    break;
                 }
 
                 let prospect;

@@ -9,6 +9,7 @@ export default function Campaigns() {
         name: "",
         niche: "",
         target_source: "",
+        scrape_type: "followers", // Agregado: Por defecto busca en seguidores
         daily_limit: "20",
         niche_context: "",
         search_keyword: "",
@@ -18,7 +19,7 @@ export default function Campaigns() {
 
     useEffect(() => {
         setMounted(true);
-        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => {});
+        fetch("/api/auth/me").then(r => r.json()).then(d => d.role && setUserRole(d.role)).catch(() => { });
         fetchCampaigns();
         const interval = setInterval(fetchCampaigns, 10000);
         return () => clearInterval(interval);
@@ -46,6 +47,7 @@ export default function Campaigns() {
                     name: form.name,
                     niche: form.niche,
                     target_source: form.target_source,
+                    scrape_type: form.scrape_type, // Mandamos el tipo a la API
                     daily_limit: parseInt(form.daily_limit) || 20,
                     niche_context: form.niche_context,
                     search_keyword: form.search_keyword,
@@ -57,7 +59,7 @@ export default function Campaigns() {
                 return;
             }
             setShowModal(false);
-            setForm({ name: "", niche: "", target_source: "", daily_limit: "20", niche_context: "", search_keyword: "" });
+            setForm({ name: "", niche: "", target_source: "", scrape_type: "followers", daily_limit: "20", niche_context: "", search_keyword: "" });
             fetchCampaigns();
         } catch (err) {
             console.error(err);
@@ -178,8 +180,11 @@ export default function Campaigns() {
 
                             {/* Source & Keyword */}
                             {campaign.target_source && (
-                                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                                <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
                                     🎯 {campaign.target_source}
+                                    <span style={{ fontSize: "10px", background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "4px" }}>
+                                        {campaign.scrape_type === "following" ? "Seguidos" : "Seguidores"}
+                                    </span>
                                 </div>
                             )}
                             {campaign.search_keyword && (
@@ -226,7 +231,7 @@ export default function Campaigns() {
                                         {campaign.status === "active" ? "Activa — prospectando" : (campaign.status_message?.includes("Sin prospectos") ? "Pausada — Sin prospectos en cola" : "Pausada")}
                                     </span>
                                 </div>
-                                
+
                                 {campaign.status_message && (
                                     <div style={{
                                         fontSize: "11px",
@@ -290,6 +295,20 @@ export default function Campaigns() {
                                         onChange={(e) => setForm({ ...form, target_source: e.target.value })}
                                     />
                                 </div>
+
+                                {/* NUEVO: Selector de Dónde buscar */}
+                                <div className="form-group">
+                                    <label className="form-label">Dónde Buscar</label>
+                                    <select
+                                        className="input"
+                                        value={form.scrape_type}
+                                        onChange={(e) => setForm({ ...form, scrape_type: e.target.value })}
+                                    >
+                                        <option value="followers">Seguidores (Recomendado)</option>
+                                        <option value="following">Seguidos (Ideal si la cuenta oculta seguidores)</option>
+                                    </select>
+                                </div>
+
                                 <div className="form-group">
                                     <label className="form-label">Palabra Clave de Filtro (Opcional)</label>
                                     <input
@@ -299,7 +318,7 @@ export default function Campaigns() {
                                         onChange={(e) => setForm({ ...form, search_keyword: e.target.value })}
                                     />
                                     <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                                        Se escribe en la lupita del modal de seguidores de Instagram para filtrar antes de scrapear.
+                                        Se escribe en la lupita del modal para filtrar antes de scrapear.
                                     </div>
                                 </div>
                                 <div className="form-group">
@@ -317,13 +336,10 @@ export default function Campaigns() {
                                     <textarea
                                         className="input"
                                         style={{ minHeight: "80px", resize: "vertical" }}
-                                        placeholder="Ej: Mencioná los prototipos de patotattoomg. El dolor principal es que pierden clientes por no tener web profesional."
+                                        placeholder="Ej: Mencioná los prototipos de patotattoomg. El dolor principal es que pierden clientes por no tener web."
                                         value={form.niche_context}
                                         onChange={(e) => setForm({ ...form, niche_context: e.target.value })}
                                     />
-                                    <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
-                                        Este contexto se inyecta al prompt de Brandon para personalizar los openers al nicho.
-                                    </div>
                                 </div>
                             </div>
                             <div className="modal-footer">
