@@ -25,7 +25,8 @@ export async function GET(request) {
         let args = [];
 
         if (!isAdmin) {
-            sql += ` WHERE c.owner_user = ?`;
+            // FIX: Ignoramos mayúsculas y espacios invisibles para que a Marcos le carguen bien sus campañas
+            sql += ` WHERE LOWER(TRIM(c.owner_user)) = LOWER(TRIM(?))`;
             args.push(currentUser);
         }
 
@@ -144,7 +145,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
     try {
         // Obtener detalles de la campaña
         const campaignRes = await db.execute({
-            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id::text = c.id::text AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id::text = ${db.isPostgres ? '?::text' : '?'}`,
+            sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id::text = c.id::text AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id::text = ${db.isPostgres ? '?::text' : '?'};`,
             args: [campaignId.toString()]
         });
         const campaign = campaignRes.rows[0];
@@ -322,23 +323,12 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
 
-                    const { generateOpener } = await import("@/lib/openai");
-                    const aiMessage = await generateOpener(prospect.biography, prospect.username, {
-                        niche_context: campaign.niche_context,
-                        campaignNiche: campaign.niche,
-                        campaignContext: campaign.niche_context
-                    });
-
-
-
-
-
-
-
+                    // 🛑 Fuga de plata tapada: Acá sacamos a OpenAI
+                    // Pasamos directo a fleet.js, que de todas formas usa la secuencia fija
                     let dmResult = await sendAndVerifyDM(page, prospect.username, {
                         bio: prospect.biography,
                         config: { niche_context: campaign.niche_context },
-                        message: aiMessage
+                        message: "usar_secuencia_fija"
                     }, console.log);
 
                     // ── Sincronizar Historial en DB ──
@@ -428,3 +418,4 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         console.error("[CAMPAIGN TRIGGER FATAL ERROR]", err);
     }
 }
+
