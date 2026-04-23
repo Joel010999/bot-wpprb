@@ -183,23 +183,26 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         const { context, browser } = session;
 
         try {
-            // ── FASE 1: AUTO-SCRAPE si hay menos de 10 prospectos pendientes ──
-            if (campaign.pending_count < 10) {
+            // ── FASE 1: AUTO-SCRAPE si no llegamos al límite diario ──
+            if (campaign.pending_count < campaign.daily_limit) {
                 if (!campaign.target_source) {
-                    console.log(`[CAMPAIGN TRIGGER] Sin prospectos pendientes y sin target_source. Pausando.`);
+                    console.log(`[CAMPAIGN TRIGGER] Faltan prospectos y sin target_source. Pausando.`);
                     await db.execute({
                         sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: ["Pausada — Sin prospectos en cola y sin fuente de búsqueda configurada", campaignId.toString()]
+                        args: ["Pausada — Sin prospectos en cola y sin fuente configurada", campaignId.toString()]
                     });
                     await browser.close();
                     return;
                 }
 
+                // Calculamos cuántos leads NUEVOS necesitamos para llegar a la cuota
+                const neededLeads = campaign.daily_limit - campaign.pending_count;
                 const targetAccount = campaign.target_source.replace(/^@/, "").trim();
-                console.log(`[CAMPAIGN TRIGGER] < 10 prospectos. Iniciando fase recolección (Scrape) de seguidores de @${targetAccount}...`);
+
+                console.log(`[CAMPAIGN TRIGGER] Faltan ${neededLeads} prospectos. Iniciando recolección de seguidores de @${targetAccount}...`);
                 await db.execute({
                     sql: `UPDATE campaigns SET status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
-                    args: [`Scrapeando seguidores de @${targetAccount}...`, campaignId.toString()]
+                    args: [`Scrapeando para conseguir ${neededLeads} leads nuevos en @${targetAccount}...`, campaignId.toString()]
                 });
 
                 const { scrapeFollowersFromPage } = await import("@/lib/scraper");
@@ -210,7 +213,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     : [];
 
                 const leads = await scrapeFollowersFromPage(scrapePage, targetAccount, {
-                    maxLeads: campaign.daily_limit || 20,
+                    maxLeads: neededLeads, // Le pedimos exactamente los que faltan
                     nicheKeywords,
                     searchKeyword: campaign.search_keyword || "",
                     onLog: console.log,
@@ -242,23 +245,24 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     }
                 }
 
-                if (inserted === 0) {
-                    console.log(`[CAMPAIGN TRIGGER] Scrape completado pero 0 leads calificados.`);
+                // Si no encontró nada nuevo Y TAMPOCO hay nada viejo, pausamos.
+                if (inserted === 0 && campaign.pending_count === 0) {
+                    console.log(`[CAMPAIGN TRIGGER] Scrape completado pero 0 leads calificados en total.`);
                     await db.execute({
                         sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
-                        args: [`Buscando leads... 0 encontrados en @${targetAccount}. Reintentando en 5 minutos`, campaignId.toString()]
+                        args: [`0 leads en @${targetAccount}. Cambiá la fuente y reactivá.`, campaignId.toString()]
                     });
                     await browser.close();
                     return;
                 }
 
-                console.log(`[CAMPAIGN TRIGGER] ✅ ${inserted} leads scrapeados e insertados. Encadenando DMs en el mismo browser...`);
+                const totalReady = campaign.pending_count + inserted;
+                console.log(`[CAMPAIGN TRIGGER] ✅ Tenemos un total de ${totalReady} leads listos. Encadenando DMs...`);
                 await db.execute({
                     sql: `UPDATE campaigns SET status_message = ?, leads_found = leads_found + ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
-                    args: [`${inserted} leads encontrados. Iniciando DMs...`, inserted, campaignId.toString()]
+                    args: [`Se consiguieron ${inserted} leads nuevos. Iniciando DMs...`, inserted, campaignId.toString()]
                 });
 
-                // Pausa humana antes de DMs (30-60s — más corta, no cerramos el browser)
                 const chainPause = Math.floor(Math.random() * 30000) + 30000;
                 console.log(`[CAMPAIGN] Esperando ${Math.round(chainPause / 1000)}s antes de iniciar DMs...`);
                 await new Promise(r => setTimeout(r, chainPause));
