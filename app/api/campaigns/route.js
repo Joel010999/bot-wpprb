@@ -25,7 +25,7 @@ export async function GET(request) {
         let args = [];
 
         if (!isAdmin) {
-            // FIX: Ignoramos mayúsculas y espacios invisibles para que a Marcos le carguen bien sus campañas
+            // FIX: Ignoramos mayúsculas y espacios invisibles
             sql += ` WHERE LOWER(TRIM(c.owner_user)) = LOWER(TRIM(?))`;
             args.push(currentUser);
         }
@@ -106,7 +106,6 @@ export async function PUT(request) {
 
         const db = await getDb();
 
-        // Verificamos propiedad de la campaña
         const checkOwnership = await db.execute({
             sql: `SELECT owner_user FROM campaigns WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
             args: [id.toString()]
@@ -126,7 +125,6 @@ export async function PUT(request) {
             args: [status, id.toString()]
         });
 
-        // Gatillar campaña en background cuando se activa
         if (status === 'active') {
             triggerCampaignAction(id, currentUser).catch(console.error);
         }
@@ -143,7 +141,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
     console.log(`[CAMPAIGN TRIGGER] Lanzando campaña ${campaignId} por el usuario ${currentUser || 'sistema'}...`);
 
     try {
-        // Obtener detalles de la campaña
         const campaignRes = await db.execute({
             sql: `SELECT c.*, (SELECT COUNT(*) FROM prospects WHERE campaign_id::text = c.id::text AND status = 'listo') AS pending_count FROM campaigns c WHERE c.id::text = ${db.isPostgres ? '?::text' : '?'};`,
             args: [campaignId.toString()]
@@ -151,7 +148,10 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         const campaign = campaignRes.rows[0];
         if (!campaign) return;
 
-        // Determinar qué bot usar: si el admin dispara una campaña, usa el bot del dueño original
+        // BUGS CORREGIDOS ACÁ: Forzamos parseo estricto a números para evitar problemas con PostgreSQL String Counts
+        const pendingCount = parseInt(campaign.pending_count, 10) || 0;
+        const dailyLimit = parseInt(campaign.daily_limit, 10) || 20;
+
         const effectiveUser = (currentUser === 'admin_joel') ? campaign.owner_user : (currentUser || campaign.owner_user);
 
         let botRes = await db.execute({
@@ -169,10 +169,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
             return;
         }
 
-        // Importar funciones
         const { createBotSession, saveSession, sendAndVerifyDM } = await import("@/lib/fleet");
 
-        // ── Iniciar sesión del bot (UNA sola vez para todo el flujo) ──
         console.log(`[CAMPAIGN] 🚀 Iniciando sesión para bot @${bot.username}`);
         let session;
         try {
@@ -184,8 +182,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         const { context, browser } = session;
 
         try {
-            // ── FASE 1: AUTO-SCRAPE si no llegamos al límite diario ──
-            if (campaign.pending_count < campaign.daily_limit) {
+            // ── FASE 1: AUTO-SCRAPE ──
+            if (pendingCount < dailyLimit) {
                 if (!campaign.target_source) {
                     console.log(`[CAMPAIGN TRIGGER] Faltan prospectos y sin target_source. Pausando.`);
                     await db.execute({
@@ -196,8 +194,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     return;
                 }
 
-                // Calculamos cuántos leads NUEVOS necesitamos para llegar a la cuota
-                const neededLeads = campaign.daily_limit - campaign.pending_count;
+                // Cálculo con variables puramente numéricas
+                const neededLeads = dailyLimit - pendingCount;
                 const targetAccount = campaign.target_source.replace(/^@/, "").trim();
 
                 console.log(`[CAMPAIGN TRIGGER] Faltan ${neededLeads} prospectos. Iniciando recolección de seguidores de @${targetAccount}...`);
@@ -214,7 +212,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     : [];
 
                 const leads = await scrapeFollowersFromPage(scrapePage, targetAccount, {
-                    maxLeads: neededLeads, // Le pedimos exactamente los que faltan
+                    maxLeads: neededLeads,
                     nicheKeywords,
                     searchKeyword: campaign.search_keyword || "",
                     onLog: console.log,
@@ -224,7 +222,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                 await scrapePage.close();
 
-                // Insertar leads en DB
                 let inserted = 0;
                 for (const lead of leads) {
                     try {
@@ -246,8 +243,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     }
                 }
 
-                // Si no encontró nada nuevo Y TAMPOCO hay nada viejo, pausamos.
-                if (inserted === 0 && campaign.pending_count === 0) {
+                if (inserted === 0 && pendingCount === 0) {
                     console.log(`[CAMPAIGN TRIGGER] Scrape completado pero 0 leads calificados en total.`);
                     await db.execute({
                         sql: `UPDATE campaigns SET status = 'paused', status_message = ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
@@ -257,7 +253,8 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                     return;
                 }
 
-                const totalReady = campaign.pending_count + inserted;
+                // Suma matemática correcta
+                const totalReady = pendingCount + inserted;
                 console.log(`[CAMPAIGN TRIGGER] ✅ Tenemos un total de ${totalReady} leads listos. Encadenando DMs...`);
                 await db.execute({
                     sql: `UPDATE campaigns SET status_message = ?, leads_found = leads_found + ? WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
@@ -269,7 +266,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 await new Promise(r => setTimeout(r, chainPause));
             }
 
-            // ── FASE 2: ENVÍO DE DMs (misma sesión, mismo browser) ──
+            // ── FASE 2: ENVÍO DE DMs ──
             await db.execute({
                 sql: `UPDATE campaigns SET status_message = 'Procesando DMs...' WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
                 args: [campaignId.toString()]
@@ -278,15 +275,16 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
             const page = await context.newPage();
             let dmsSentToday = 0;
 
-            while (dmsSentToday < campaign.daily_limit) {
-                // Chequear si la campaña sigue activa
+            while (dmsSentToday < dailyLimit) {
+                // Chequeo estricto del estado de la campaña en DB ignorando mayúsculas
                 const checkCamp = await db.execute({ sql: `SELECT status FROM campaigns WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`, args: [campaignId.toString()] });
-                if (checkCamp.rows[0]?.status !== 'active') {
+                const currentStatus = (checkCamp.rows[0]?.status || '').toLowerCase();
+
+                if (currentStatus !== 'active') {
                     console.log("[CAMPAIGN] Campaña pausada remotamente. Deteniendo bucle.");
-                    break;
+                    break; // Acá fue donde abortó en tu prueba
                 }
 
-                // Buscar un prospecto
                 let prospect;
                 try {
                     const sqlQuery = `SELECT * FROM prospects 
@@ -315,7 +313,6 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                 }
 
                 try {
-                    // Marcar como revisado ahora mismo
                     await db.execute({
                         sql: `UPDATE prospects SET last_checked_at = CURRENT_TIMESTAMP WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
                         args: [prospect.id.toString()]
@@ -323,15 +320,12 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
 
                     console.log(`[CAMPAIGN] Procesando prospecto @${prospect.username}...`);
 
-                    // 🛑 Fuga de plata tapada: Acá sacamos a OpenAI
-                    // Pasamos directo a fleet.js, que de todas formas usa la secuencia fija
                     let dmResult = await sendAndVerifyDM(page, prospect.username, {
                         bio: prospect.biography,
                         config: { niche_context: campaign.niche_context },
                         message: "usar_secuencia_fija"
                     }, console.log);
 
-                    // ── Sincronizar Historial en DB ──
                     if (dmResult.chatHistory && dmResult.chatHistory.length > 0) {
                         let leadId = null;
                         try {
@@ -372,7 +366,7 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
                             args: [prospect.id.toString()]
                         });
                         dmsSentToday++;
-                        console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${campaign.daily_limit})`);
+                        console.log(`[CAMPAIGN] DM OK! (${dmsSentToday}/${dailyLimit})`);
 
                         await db.execute({
                             sql: `UPDATE campaigns SET dms_sent = dms_sent + 1 WHERE id::text = ${db.isPostgres ? '?::text' : '?'}`,
@@ -418,4 +412,3 @@ async function triggerCampaignAction(campaignId, currentUser = null) {
         console.error("[CAMPAIGN TRIGGER FATAL ERROR]", err);
     }
 }
-
